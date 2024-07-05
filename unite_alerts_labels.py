@@ -102,7 +102,7 @@ if __name__ == "__main__":
                         ), f"{data[system].at[i, 'name']} != {payload['rule']['description']}, {i}"
                         assert data[system].at[i, "ip"] == payload["agent"]["ip"]
 
-                    data[system].at[i, "raw_data"] = line.strip("\n")
+                    data[system].at[i, "raw_data"] = payload
                     data[system].at[i, "raw_time"] = time
 
                     i += 1
@@ -110,13 +110,13 @@ if __name__ == "__main__":
 
         print("Merging alerts...")
 
-        csv_data = pd.concat([a_csv, w_csv], ignore_index=True)
-        assert l == len(csv_data)
-        csv_data.sort_values(
+        all_data = pd.concat([a_csv, w_csv], ignore_index=True)
+        assert l == len(all_data)
+        all_data.sort_values(
             by="raw_time", kind="mergesort", inplace=True, ignore_index=True
         )
 
-        csv_data.to_csv(f"alerts/{scenario}_alerts.csv", index=False)
+        all_data.to_json(f"alerts/{scenario}_alerts.json", orient="records", lines=True)
 
         print(f"Processing {scenario} finished.")
         print()
