@@ -4,6 +4,13 @@ from datetime import datetime as dt
 import pytz
 from typing import Optional, Literal
 
+"""For each scenario of the AIT Alert Dataset, this script reads the raw alerts from the files 
+alerts/{scenario}_aminer.json and alerts/{scenario}_wazuh.json, and their lables from alerts_csv/{scenario}_alerts.csv, 
+and merges the alerts and labels into a single JSON file alerts/{scenario}_alerts.json.
+The resuting file contains one JSON object per line, each object representing one alert with its labels and being 
+ordered by the raw timestamp of it.
+"""
+
 
 def get_time(j: dict, ids: Optional[Literal["a", "w"]] = None) -> float:
     """
@@ -58,13 +65,15 @@ if __name__ == "__main__":
         csv_data["raw_time"] = 0.0
         csv_data["raw_data"] = ""
         a_csv = (
-            csv_data.where(csv_data.name.apply(lambda x: x.startswith("AMiner")))
+            csv_data.where(csv_data.name.apply(
+                lambda x: x.startswith("AMiner")))
             .dropna()
             .reset_index(drop=True)
         )
         w_csv = (
             csv_data.where(
-                csv_data.name.apply(lambda x: x.startswith(("Wazuh", "Suricata")))
+                csv_data.name.apply(
+                    lambda x: x.startswith(("Wazuh", "Suricata")))
             )
             .dropna()
             .reset_index(drop=True)
@@ -93,16 +102,18 @@ if __name__ == "__main__":
                             data[system].at[i, "name"]
                             == payload["AnalysisComponent"]["AnalysisComponentName"]
                         )
-                        assert data[system].at[i, "ip"] == payload["AMiner"]["ID"]
+                        assert data[system].at[i,
+                                               "ip"] == payload["AMiner"]["ID"]
                     else:
                         assert (
                             data[system]
                             .at[i, "name"]
                             .endswith(payload["rule"]["description"])
                         ), f"{data[system].at[i, 'name']} != {payload['rule']['description']}, {i}"
-                        assert data[system].at[i, "ip"] == payload["agent"]["ip"]
+                        assert data[system].at[i,
+                                               "ip"] == payload["agent"]["ip"]
 
-                    data[system].at[i, "raw_data"] = line.strip("\n")
+                    data[system].at[i, "raw_data"] = payload
                     data[system].at[i, "raw_time"] = time
 
                     i += 1
@@ -110,13 +121,14 @@ if __name__ == "__main__":
 
         print("Merging alerts...")
 
-        csv_data = pd.concat([a_csv, w_csv], ignore_index=True)
-        assert l == len(csv_data)
-        csv_data.sort_values(
+        all_data = pd.concat([a_csv, w_csv], ignore_index=True)
+        assert l == len(all_data)
+        all_data.sort_values(
             by="raw_time", kind="mergesort", inplace=True, ignore_index=True
         )
 
-        csv_data.to_csv(f"alerts/{scenario}_alerts.csv", index=False)
+        all_data.to_json(f"alerts/{scenario}_alerts.json",
+                         orient="records", lines=True)
 
         print(f"Processing {scenario} finished.")
         print()
