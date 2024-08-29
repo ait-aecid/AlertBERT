@@ -5,8 +5,8 @@ import pytz
 from typing import Optional, Literal
 
 """For each scenario of the AIT Alert Dataset, this script reads the raw alerts from the files 
-alerts/{scenario}_aminer.json and alerts/{scenario}_wazuh.json, and their lables from alerts_csv/{scenario}_alerts.csv, 
-and merges the alerts and labels into a single JSON file alerts/{scenario}_alerts.json.
+alerts_json/{scenario}_aminer.json and alerts_json/{scenario}_wazuh.json, and their lables from alerts_csv/{scenario}_alerts.csv, 
+and merges the alerts and labels into a single JSON file alerts_json/{scenario}_alerts.json.
 The resuting file contains one JSON object per line, each object representing one alert with its labels and being 
 ordered by the raw timestamp of it.
 """
@@ -89,7 +89,7 @@ if __name__ == "__main__":
             print(f"Labelling {system} alerts...")
 
             i = 0
-            with open(f"alerts/{scenario}_{system}.json") as f:
+            with open(f"alerts_json/{scenario}_{system}.json") as f:
                 for line in f:
                     payload = json.loads(line)
                     time = get_time(payload, system[0])
@@ -127,7 +127,7 @@ if __name__ == "__main__":
             by="raw_time", kind="mergesort", inplace=True, ignore_index=True
         )
 
-        all_data.to_json(f"alerts/{scenario}_alerts.json",
+        all_data.to_json(f"alerts_json/{scenario}_alerts.json",
                          orient="records", lines=True)
 
         print(f"Processing {scenario} finished.")
