@@ -16,7 +16,7 @@ Dealing with Security Alert Flooding: Using Machine Learning for Domain-independ
 
 Maintainable Log Datasets for Evaluation of Intrusion Detection Systems - https://ieeexplore.ieee.org/abstract/document/9866880 
 
-Introducing a New Alert Data Set for Multi-Step Attack Analysis - https://arxiv.org/abs/2308.12627 - https://aitonline-my.sharepoint.com/:b:/g/personal/lukas_karner_ait_ac_at/EZornBstZ1FKgbX0G3s4lRUBoizP3eYPesX3_PHbuf9Yhw?email=Lukas.Karner%40ait.ac.at&e=jTQf47 
+Introducing a New Alert Data Set for Multi-Step Attack Analysis - https://arxiv.org/abs/2308.12627
 
 ## Description (tbd)
 
@@ -26,5 +26,5 @@ Introducing a New Alert Data Set for Multi-Step Attack Analysis - https://arxiv.
 
 ## Usage (tbd)
 + [put here short descriptions of modules]
-+ modules ```/deep_learning/module.py``` have to be run via ```python -m deep_learning.module```.
++ modules `/deep_learning/module.py` have to be run via `python -m deep_learning.module`.
 + all the important info can be found in the docstrings of modules.
