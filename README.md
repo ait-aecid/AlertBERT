@@ -51,6 +51,10 @@ Additionally, the script will create the files `alerts_json/scenario_light.json`
 
 Done.
 
+### AITADS-Augmented
+
+For information regarding the setup of AITADS-A please refer to the README file in the `aitads_augmented` directory.
+
 ## Usage (tbd)
 
 + [put here short descriptions of modules]
