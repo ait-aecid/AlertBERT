@@ -1,4 +1,4 @@
-# alert-grouping-interns
+# AlertBERT - Deep Learning for Alert Grouping
 
 ## data sets
 
@@ -51,9 +51,9 @@ Additionally, the script will create the files `alerts_json/scenario_light.json`
 
 Done.
 
-### AITADS-Augmented
+### AIT-ADS-Augmented
 
-For information regarding the setup of AITADS-A please refer to the README file in the `aitads_augmented` directory.
+For information regarding the setup of AIT-ADS-A please refer to the README file in the `aitads_augmented` directory.
 
 ## Usage (tbd)
 

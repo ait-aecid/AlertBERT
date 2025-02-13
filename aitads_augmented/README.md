@@ -1,55 +1,51 @@
 # AIT Alert Dataset - Augmented
 
-A flexible and easily configured augmentation method for the AIT Alert Dataset.
+A flexible and easily configured augmentation method for the [AIT Alert Dataset](https://zenodo.org/records/8263181).  
 
-Still to do:
-+ Implement dataset class.
-+ Target vocabs (Create different labels for the same attack used multiple times!!!)
-
-So far AITADS-A does not contain the raw alert data of AITADS because there we would have to make sure to adapt all timestamps correctly.
+So far AIT-ADS-A does not contain the raw alert data of AIT-ADS because there we would have to make sure to adapt all timestamps correctly.  
 
 ## Method
 
-The reason why AITADS-A was created is that the original AITADS only features one attack at a time and a constant noise level.
+The reason why AIT-ADS-A was created is that the original AIT-ADS only features one attack at a time and a constant noise level.
 In this regime the simple TimeDelta method is quite effective at the alert grouping problem, hence data with more noise and/or simultaneous attacks were required to create and evaluate more advanced alert grouping methods.  
-In order to save the effort of creating a new version of AITADS, the idea was born to instead augment it by mixing alerts of different scenarios or days and thereby create a dataset with a desired amount of noise and attacks which are more diffcult to group.
+In order to save the effort of creating a new version of AIT-ADS, the idea was born to instead augment it by mixing alerts of different scenarios or days and thereby create a dataset with a desired amount of noise and attacks which are more diffcult to group.
 
 This augmentation happens in the following way:
-In order to be able to recombine the exisitng alerts in the most flexible way while retaining all meaningful relations among them, each scenario of AITADS is split into the subsequences corresponding to the different event labels (except for the case of the "dnsteal" event label, the procedure for which is detailed below), that is the full alert sequence is separated in sequences corresponding to the false alerts on the one hand and the alerts which are triggered by each step of the attack chain on the other hand.
-The different alert sequences for false positives and attacks can then be freely recombined through specification of a configuration file, to create new alert sequences which have the same underlying syntactic and semantic structure as the original AITADS.
-The elementary unit of an AITADS-A configuration is a day of alerts which can consist of the false alerts of several days in AITADS and multiple attacks defined to take place at a certain time during this day.
-All the specified alerts of this day will then be assigned timestamps which make them appear to have happened throughout this day and the different sequences are merge-sorted by these timestamps into a single alert sequence representing this day in AITADS-A.
-Similarly to AITADS it is also possible in AITADS-A to combine multiple such days into a continuous scenario, which is sensible e.g. if multiple days use noise or attacks from the same scenarios in AITADS.
-For precise information on how to define configurations of AITADS-A, please refer to the following sections.
+In order to be able to recombine the exisitng alerts in the most flexible way while retaining all meaningful relations among them, each scenario of AIT-ADS is split into the subsequences corresponding to the different event labels (except for the case of the "dnsteal" event label, the procedure for which is detailed below), that is the full alert sequence is separated in sequences corresponding to the false alerts on the one hand and the alerts which are triggered by each step of the attack chain on the other hand.
+The different alert sequences for false positives and attacks can then be freely recombined through specification of a configuration file, to create new alert sequences which have the same underlying syntactic and semantic structure as the original AIT-ADS.
+The elementary unit of an AIT-ADS-A configuration is a day of alerts which can consist of the false alerts of several days in AIT-ADS and multiple attacks defined to take place at a certain time during this day.
+All the specified alerts of this day will then be assigned timestamps which make them appear to have happened throughout this day and the different sequences are merge-sorted by these timestamps into a single alert sequence representing this day in AIT-ADS-A.
+Similarly to AIT-ADS it is also possible in AIT-ADS-A to combine multiple such days into a continuous scenario, which is sensible e.g. if multiple days use noise or attacks from the same scenarios in AIT-ADS.
+For precise information on how to define configurations of AIT-ADS-A, please refer to the following sections.
 
-When designing AITADS-A several design decision had to be made to ensure that the resulting data structure is both performant and flexible while only allowing for sensible configurations of the data to be made.
+When designing AIT-ADS-A several design decision had to be made to ensure that the resulting data structure is both performant and flexible while only allowing for sensible configurations of the data to be made.
 Thus, here is a short summary of the most important of these decisions and why they were made like this:
-+ Any configuration of AITADS-A is defined beforehand and its structure is hardcoded there.
++ Any configuration of AIT-ADS-A is defined beforehand and its structure is hardcoded there.
 This is done for two reasons:
     1) Dynamic creation of new augmentations (e.g. at every epoch) is too slow, so the augmented dataset is assembled once when it is loaded and then it is only sampled from afterwards.
     2) Using different randomized augmentations of the data during training would simulate an infinite supply of data.
     This would not be a problem if our alert grouping method would be supervised because then it is allowed to use the true labels of the data for training data augmentation, but as our method is unsupervised we must only use the labels to create a new finite supply of data on which we then train in an unsupervised way.
 + The noise level of a configuration is a positive integer and it determines how many noise sequences are overlaid on each day.
-In order to simulate alert data from a single fixed-size computer network, this number should be the same for every day within a configuration of AITADS-A.
+In order to simulate alert data from a single fixed-size computer network, this number should be the same for every day within a configuration of AIT-ADS-A.
 Continuous noise levels are currently impossible to implement as it is impossible to subsample a sequence of false alerts while ensuring that its structure remains consistent with a real sequence of false alerts.
 + To further enforce consistency with real alert sequences, different sequences of false alerts are always merged in a way so that the alerts match in the time-of-day at which they occured. This is done because the frequency of false alerts varies considerably over the course of a day and mixing of alerts from different daytimes would create structure not observed in real data.
-This principle is the core reason why days were chosen to be the elementary unit of an AITADS-A configuration.
+This principle is the core reason why days were chosen to be the elementary unit of an AIT-ADS-A configuration.
 + Unlike other event labels, the alerts assigned to the "dnsteal" attack receive a special preprocessing where they are split up in the three sequences "dnsteal_start", "dnsteal_active", and "dnsteal_end".
 This is done because, in contrast to the other labels, the dnsteal sequence is not closely localised in time but in most cases extends over several days and is in turn composed of common repeating patterns.
-These patterns themselves, however, all have the properties of idenpendent parts of an attack chain (closely localised in time and forming a distinctive pattern), and thus are encapsulated in the three new sub-labels "dnsteal_start", "dnsteal_active", and "dnsteal_end" which can then be independently placed in configurations of AITADS-A.
+These patterns themselves, however, all have the properties of idenpendent parts of an attack chain (closely localised in time and forming a distinctive pattern), and thus are encapsulated in the three new sub-labels "dnsteal_start", "dnsteal_active", and "dnsteal_end" which can then be independently placed in configurations of AIT-ADS-A.
 
 ## Data preparation
 
-To prepare the AITADS for creating augmented versions of it run `../build_augment_files.py`.  
-This script will separate the data into several files containing the noise of each AITADS scenario split into days, and the alerts of individual attacks for each scenario.  
+To prepare the AIT-ADS for creating augmented versions of it run `../build_augment_files.py`.  
+This script will separate the data into several files containing the noise of each AIT-ADS scenario split into days, and the alerts of individual attacks for each scenario.  
 Lists describing the contents of each noise/attack file can be found at the end of this document.
 
-## Using AITADS-A
+## Using AIT-ADS-A
 
-To load AITADS-A into a Pytorch dataset use the `AITAlertDataset` class defined in `../deep_learning/aitads.py` instantiated with the keyword arguments `flavour="augmented"` and `config` the name to a config file.  
-The config name `original` recreates the original AITADS with the augmented dataset class (except for the small difference that dnsteal alerts of the first days are not discarded but moved to the next days).  
+To load AIT-ADS-A into a Pytorch dataset use the `AITAlertDataset` class defined in `../deep_learning/aitads.py` instantiated with the keyword arguments `flavour="augmented"` and `config` the name to a config file.  
+The config name `original` recreates the original AIT-ADS with the augmented dataset class (except for the small difference that dnsteal alerts of the first days are not discarded but moved to the next days).  
 
-To create a new configuration of AITADS-A it is sufficient to define a config file as described below.  
+To create a new configuration of AIT-ADS-A it is sufficient to define a config file as described below.  
 If you create a new config file, please add a short description of it to the list below.
 
 ### Config files
@@ -58,15 +54,15 @@ Config files are json files with the following contents:
 ```json
 {
     "name":       str,                # name of the configuration
-    "start_time": str,                # datetime string indicating the start of each scenario, e.g. "2025-02-10T00:00:00@UTC+1"
+    "start_time": str,                # isoformat datetime string indicating the start of each scenario, e.g. "2025-02-10T00:00:00+01:00"
     "train":      array[array[day]],  # the recipes for the splits of the configuration
     "val":        array[array[day]],
     "test":       array[array[day]]
 }
 ```
 
-Each split of the dataset consists of multiple sequences of days (like the scenarios of the original AITADS).  
-Like in the original AITADS the days within one scenario will be concatenated to form a longer alert sequence.  
+Each split of the dataset consists of multiple sequences of days (like the scenarios of the original AIT-ADS).  
+Like in the original AIT-ADS the days within one scenario will be concatenated to form a longer alert sequence.  
 
 The configuration of a day has the following format:
 ```json
@@ -76,7 +72,7 @@ day: {
 }
 ```
 
-As an example one can consider `configs/original.json` which defines the origianl AITADS data in terms of AITADS-A.  
+As an example one can consider `configs/original.json` which defines the origianl AIT-ADS data in terms of AIT-ADS-A.  
 
 __Note 1:__ Day 0 noise is usually omitted because it contains many new anomaly alerts and thus is has a different distribution of alerts than noise from the remaining days.  
 __Note 2:__ It is fine to mix attacks and noise of different scenarios as long as one does not use the IP address of the alerts as feature for the model!
@@ -85,7 +81,7 @@ Using the "host" feature is fine though as it is unified across scenarios.
 ### Implemented Configurations
 
 #### original
-Recreates the original AITADS with the augmented dataset class (except for the small difference that dnsteal alerts of the first days are not discarded but moved to the next days).
+Recreates the original AIT-ADS with the augmented dataset class (except for the small difference that dnsteal alerts of the first days are not discarded but moved to the next days).
 
 #### simultaneous-attacks
 tbd
