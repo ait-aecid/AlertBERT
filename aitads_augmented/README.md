@@ -84,10 +84,11 @@ Using the "host" feature is fine though as it is unified across scenarios.
 Recreates the original AIT-ADS with the augmented dataset class (except for the small difference that dnsteal alerts of the first days are not discarded but moved to the next days).
 
 #### simultaneous-attacks
-tbd
+The noise, number of scenarios and days is the same as in "original", but the attacks are rearanged so that there are collisions in time of scan/scan and scan/exploit pairs.
+(only shaw and wardbeck implemented so far)
 
 #### more-noise
-tbd
+The number of scenarios, days and attacks is the same as in "original", but every day additionally contains the false alerts of another day from the same split.
 
 ## Noise files
 
