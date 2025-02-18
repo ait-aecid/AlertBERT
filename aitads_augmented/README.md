@@ -43,7 +43,7 @@ Lists describing the contents of each noise/attack file can be found at the end 
 ## Using AIT-ADS-A
 
 To load AIT-ADS-A into a Pytorch dataset use the `AITAlertDataset` class defined in `../deep_learning/aitads.py` instantiated with the keyword arguments `flavour="augmented"` and `config` the name to a config file.  
-The config name `original` recreates the original AIT-ADS with the augmented dataset class (except for the small difference that dnsteal alerts of the first days are not discarded but moved to the next days).  
+The config name `"original"` recreates the original AIT-ADS with the augmented dataset class (except for the small difference that dnsteal alerts of the first days are not discarded but moved to the next days).  
 
 To create a new configuration of AIT-ADS-A it is sufficient to define a config file as described below.  
 If you create a new config file, please add a short description of it to the list below.
@@ -85,7 +85,6 @@ Recreates the original AIT-ADS with the augmented dataset class (except for the 
 
 #### simultaneous-attacks
 The noise, number of scenarios and days is the same as in "original", but the attacks are rearanged so that there are collisions in time of scan/scan and scan/exploit pairs.
-(only shaw and wardbeck implemented so far)
 
 #### more-noise
 The number of scenarios, days and attacks is the same as in "original", but every day additionally contains the false alerts of another day from the same split.

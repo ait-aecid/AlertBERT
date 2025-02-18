@@ -1,5 +1,6 @@
 import datetime as dt
 import json
+import os
 
 import numpy as np
 import pandas as pd
@@ -7,7 +8,7 @@ import pandas as pd
 """For each scenario of the AIT Alert Dataset, this script reads the raw alerts from
 the files `alerts_json/{scenario}_light.json` and splits them into noise and attacks.
 The noise alerts are separated into days and saved as individual JSON files in the
-folder `aitads_augmented/` with the names `{scenario}-{day}.json`.
+folder `aitads_augmented/data/` with the names `{scenario}-{day}.json`.
 The attack alerts are saved as individual JSON files in the folder `aitads_augmented/`
 with the names `{scenario}-{attack}.json`.
 Additionally, the start times of the attacks are saved in a dictionary and printed to
@@ -47,6 +48,10 @@ dnsteal_stage_to_short = {
 }
 
 if __name__ == "__main__":
+    # check if aitads_augmented[/data] directories exists
+    if not os.path.exists("aitads_augmented/data"):
+        os.makedirs("aitads_augmented/data")
+
     for scenario in scenarios:
         print(f"Processing {scenario}...")
 
@@ -94,7 +99,7 @@ if __name__ == "__main__":
         noise = [df.to_dict(orient="records") for df in noise]
 
         for i, day in enumerate(noise):
-            with open(f"aitads_augmented/{scenario}-{i}.json", "w") as f:
+            with open(f"aitads_augmented/data/{scenario}-{i}.json", "w") as f:
                 json.dump(
                     day,
                     f,
@@ -158,7 +163,7 @@ if __name__ == "__main__":
             attack_data = pd.DataFrame(attack_data)
             attack_data = attack_data.to_dict(orient="records")
 
-            with open(f"aitads_augmented/{file_name}.json", "w") as f:
+            with open(f"aitads_augmented/data/{file_name}.json", "w") as f:
                 json.dump(
                     attack_data,
                     f,
