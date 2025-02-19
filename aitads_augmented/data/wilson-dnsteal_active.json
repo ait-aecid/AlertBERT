@@ -7,6 +7,7 @@
 "short":"A-Dns-Frq",
 "time_label":"false_positive",
 "event_label":"dnsteal",
+"hierarchical_event_label":"dnsteal.1.",
 "raw_time":0.0
 }
 ]

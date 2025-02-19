@@ -7,6 +7,7 @@
 "short":"A-All-Evt",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":0.0
 },
 {
@@ -17,6 +18,7 @@
 "short":"W-Aut-Sud",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":0.0
 },
 {
@@ -27,6 +29,7 @@
 "short":"A-All-Evt",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":3.0
 },
 {
@@ -37,6 +40,7 @@
 "short":"A-All-Evt",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":3.0
 },
 {
@@ -47,6 +51,7 @@
 "short":"A-All-Evt",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":3.0
 },
 {
@@ -57,6 +62,7 @@
 "short":"W-Aut-Pam1",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":3.0
 },
 {
@@ -67,6 +73,7 @@
 "short":"W-Aut-Pam1",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":3.0
 },
 {
@@ -77,6 +84,7 @@
 "short":"W-Aut-Sud",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":3.0
 },
 {
@@ -87,6 +95,7 @@
 "short":"A-All-Evt",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":3.299999952316284
 },
 {
@@ -97,6 +106,7 @@
 "short":"A-Aud-Com6",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":3.299999952316284
 },
 {
@@ -107,6 +117,7 @@
 "short":"A-All-Evt",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":3.309999942779541
 },
 {
@@ -117,6 +128,7 @@
 "short":"A-Aud-Com2",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":3.309999942779541
 },
 {
@@ -127,6 +139,7 @@
 "short":"A-Aud-Com6",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":3.309999942779541
 },
 {
@@ -137,6 +150,7 @@
 "short":"A-Aud-Com6",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":3.319999933242798
 },
 {
@@ -147,6 +161,7 @@
 "short":"A-Aud-Com2",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":3.319999933242798
 },
 {
@@ -157,6 +172,7 @@
 "short":"A-All-Evt",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":5.0
 },
 {
@@ -167,6 +183,7 @@
 "short":"A-All-Evt",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":5.0
 },
 {
@@ -177,6 +194,7 @@
 "short":"A-All-Evt",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":5.0
 },
 {
@@ -187,6 +205,7 @@
 "short":"W-Aut-Pam1",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":5.0
 },
 {
@@ -197,6 +216,7 @@
 "short":"W-Aut-Sud",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":5.0
 },
 {
@@ -207,6 +227,7 @@
 "short":"W-Aut-Pam1",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":5.0
 },
 {
@@ -217,6 +238,7 @@
 "short":"A-All-Evt",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":5.75
 },
 {
@@ -227,6 +249,7 @@
 "short":"A-Aud-Com6",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":5.75
 },
 {
@@ -237,6 +260,7 @@
 "short":"A-All-Evt",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":5.75
 },
 {
@@ -247,6 +271,7 @@
 "short":"A-Aud-Com2",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":5.75
 },
 {
@@ -257,6 +282,7 @@
 "short":"A-Aud-Com6",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":5.75
 },
 {
@@ -267,6 +293,7 @@
 "short":"A-Aud-Com6",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":5.9700000286102295
 },
 {
@@ -277,6 +304,7 @@
 "short":"A-Aud-Com2",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":5.9700000286102295
 },
 {
@@ -287,6 +315,7 @@
 "short":"A-All-Evt",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":14.0
 },
 {
@@ -297,6 +326,7 @@
 "short":"A-All-Evt",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":14.0
 },
 {
@@ -307,6 +337,7 @@
 "short":"A-All-Evt",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":14.0
 },
 {
@@ -317,6 +348,7 @@
 "short":"W-Aut-Pam1",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":14.0
 },
 {
@@ -327,6 +359,7 @@
 "short":"W-Aut-Sud",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":14.0
 },
 {
@@ -337,6 +370,7 @@
 "short":"W-Aut-Pam1",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":14.0
 },
 {
@@ -347,6 +381,7 @@
 "short":"A-All-Evt",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":14.599999904632568
 },
 {
@@ -357,6 +392,7 @@
 "short":"A-Aud-Com6",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":14.599999904632568
 },
 {
@@ -367,6 +403,7 @@
 "short":"A-All-Evt",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":14.599999904632568
 },
 {
@@ -377,6 +414,7 @@
 "short":"A-Aud-Com2",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":14.599999904632568
 },
 {
@@ -387,6 +425,7 @@
 "short":"A-Aud-Com6",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":14.599999904632568
 },
 {
@@ -397,6 +436,7 @@
 "short":"A-Aud-Com6",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":14.609999895095825
 },
 {
@@ -407,6 +447,7 @@
 "short":"A-Aud-Com2",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":14.609999895095825
 }
 ]

@@ -7,6 +7,7 @@
 "short":"A-Aud-Com4",
 "time_label":"service_stop",
 "event_label":"dnsteal",
+"hierarchical_event_label":"dnsteal.2.",
 "raw_time":0.49000000953674316
 },
 {
@@ -17,6 +18,7 @@
 "short":"A-Aud-Com4",
 "time_label":"service_stop",
 "event_label":"dnsteal",
+"hierarchical_event_label":"dnsteal.2.",
 "raw_time":0.49000000953674316
 }
 ]

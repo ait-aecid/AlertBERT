@@ -7,6 +7,7 @@
 "short":"A-Dns-Val1",
 "time_label":"false_positive",
 "event_label":"dnsteal",
+"hierarchical_event_label":"dnsteal.0.",
 "raw_time":0.0
 },
 {
@@ -17,6 +18,7 @@
 "short":"A-Dns-Val1",
 "time_label":"false_positive",
 "event_label":"dnsteal",
+"hierarchical_event_label":"dnsteal.0.",
 "raw_time":0.0
 }
 ]

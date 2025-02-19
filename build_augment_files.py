@@ -12,7 +12,8 @@ folder `aitads_augmented/data/` with the names `{scenario}-{day}.json`.
 The attack alerts are saved as individual JSON files in the folder `aitads_augmented/`
 with the names `{scenario}-{attack}.json`.
 Additionally, the start times of the attacks are saved in a dictionary and printed to
-the console for reconstruction of the original dataset.
+the console for reconstruction of the original dataset and the constant part of the
+hierarchical event labels is added to the attack alerts.
 """
 
 scenarios = [
@@ -41,10 +42,10 @@ attack_event_labels = [
     "online_cracking",
 ]
 
-dnsteal_stage_to_short = {
-    "dnsteal_start": "A-Dns-Val1",
-    "dnsteal_active": "A-Dns-Frq",
-    "dnsteal_end": "A-Aud-Com4",
+dnsteal_stage_info = {
+    "dnsteal_start": ("A-Dns-Val1", ".0."),
+    "dnsteal_active": ("A-Dns-Frq", ".1."),
+    "dnsteal_end": ("A-Aud-Com4", ".2."),
 }
 
 if __name__ == "__main__":
@@ -96,6 +97,8 @@ if __name__ == "__main__":
 
         # save noise
         noise = [pd.DataFrame(day) for day in noise]
+        for df in noise:
+            df.insert(7, "hierarchical_event_label", "-")
         noise = [df.to_dict(orient="records") for df in noise]
 
         for i, day in enumerate(noise):
@@ -112,11 +115,14 @@ if __name__ == "__main__":
         attack_time_dict = {i: [] for i in range(days[-1] + 1)}
         for attack in attack_event_labels:
             if attack.startswith("dnsteal"):
+                short, stage = dnsteal_stage_info[attack]
                 attack_mask = (data["event_label"] == "dnsteal") & (
-                    data["short"] == dnsteal_stage_to_short[attack]
+                    data["short"] == short
                 )
+                hierarchical_event_label = "dnsteal" + stage
             else:
                 attack_mask = data["event_label"] == attack
+                hierarchical_event_label = attack + ".0."
 
             if not np.any(attack_mask):
                 continue
@@ -161,6 +167,7 @@ if __name__ == "__main__":
                 )
 
             attack_data = pd.DataFrame(attack_data)
+            attack_data.insert(7, "hierarchical_event_label", hierarchical_event_label)
             attack_data = attack_data.to_dict(orient="records")
 
             with open(f"aitads_augmented/data/{file_name}.json", "w") as f:

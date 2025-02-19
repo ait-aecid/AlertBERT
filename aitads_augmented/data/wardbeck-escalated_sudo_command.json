@@ -7,6 +7,7 @@
 "short":"A-All-Evt",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":0.0
 },
 {
@@ -17,6 +18,7 @@
 "short":"W-Aut-Sud",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":0.0
 },
 {
@@ -27,6 +29,7 @@
 "short":"A-All-Evt",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":1.0
 },
 {
@@ -37,6 +40,7 @@
 "short":"A-All-Evt",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":1.0
 },
 {
@@ -47,6 +51,7 @@
 "short":"W-Aut-Sud",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":1.0
 },
 {
@@ -57,6 +62,7 @@
 "short":"W-Aut-Pam1",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":1.0
 },
 {
@@ -67,6 +73,7 @@
 "short":"A-All-Evt",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":1.9900000095367432
 },
 {
@@ -77,6 +84,7 @@
 "short":"A-Aud-Com6",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":1.9900000095367432
 },
 {
@@ -87,6 +95,7 @@
 "short":"A-All-Evt",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":1.9900000095367432
 },
 {
@@ -97,6 +106,7 @@
 "short":"A-Aud-Com2",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":1.9900000095367432
 },
 {
@@ -107,6 +117,7 @@
 "short":"A-Aud-Com6",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":1.9900000095367432
 },
 {
@@ -117,6 +128,7 @@
 "short":"A-All-Evt",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":2.0
 },
 {
@@ -127,6 +139,7 @@
 "short":"A-Aud-Com6",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":2.0
 },
 {
@@ -137,6 +150,7 @@
 "short":"A-Aud-Com2",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":2.0
 },
 {
@@ -147,6 +161,7 @@
 "short":"W-Aut-Pam1",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":2.0
 },
 {
@@ -157,6 +172,7 @@
 "short":"A-All-Evt",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":5.0
 },
 {
@@ -167,6 +183,7 @@
 "short":"A-All-Evt",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":5.0
 },
 {
@@ -177,6 +194,7 @@
 "short":"A-All-Evt",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":5.0
 },
 {
@@ -187,6 +205,7 @@
 "short":"W-Aut-Pam1",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":5.0
 },
 {
@@ -197,6 +216,7 @@
 "short":"W-Aut-Pam1",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":5.0
 },
 {
@@ -207,6 +227,7 @@
 "short":"W-Aut-Sud",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":5.0
 },
 {
@@ -217,6 +238,7 @@
 "short":"A-All-Evt",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":5.2799999713897705
 },
 {
@@ -227,6 +249,7 @@
 "short":"A-Aud-Com6",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":5.2799999713897705
 },
 {
@@ -237,6 +260,7 @@
 "short":"A-All-Evt",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":5.2799999713897705
 },
 {
@@ -247,6 +271,7 @@
 "short":"A-Aud-Com2",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":5.2799999713897705
 },
 {
@@ -257,6 +282,7 @@
 "short":"A-Aud-Com6",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":5.2799999713897705
 },
 {
@@ -267,6 +293,7 @@
 "short":"A-Aud-Com6",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":5.5
 },
 {
@@ -277,6 +304,7 @@
 "short":"A-Aud-Com2",
 "time_label":"privilege_escalation",
 "event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
 "raw_time":5.5
 }
 ]

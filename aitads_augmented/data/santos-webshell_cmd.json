@@ -7,6 +7,7 @@
 "short":"A-Acc-Ent2",
 "time_label":"webshell",
 "event_label":"webshell_cmd",
+"hierarchical_event_label":"webshell_cmd.0.",
 "raw_time":0.0
 },
 {
@@ -17,6 +18,7 @@
 "short":"A-Acc-Clc",
 "time_label":"webshell",
 "event_label":"webshell_cmd",
+"hierarchical_event_label":"webshell_cmd.0.",
 "raw_time":0.0
 },
 {
@@ -27,6 +29,7 @@
 "short":"A-Acc-Ent2",
 "time_label":"cracking",
 "event_label":"webshell_cmd",
+"hierarchical_event_label":"webshell_cmd.0.",
 "raw_time":2.0
 },
 {
@@ -37,6 +40,7 @@
 "short":"A-Acc-Ent2",
 "time_label":"cracking",
 "event_label":"webshell_cmd",
+"hierarchical_event_label":"webshell_cmd.0.",
 "raw_time":31.0
 }
 ]

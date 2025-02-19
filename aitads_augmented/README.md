@@ -6,6 +6,8 @@ So far AIT-ADS-A does not contain the raw alert data of AIT-ADS because there we
 
 ## Method
 
+tbd: description of hierarchical event labels
+
 The reason why AIT-ADS-A was created is that the original AIT-ADS only features one attack at a time and a constant noise level.
 In this regime the simple TimeDelta method is quite effective at the alert grouping problem, hence data with more noise and/or simultaneous attacks were required to create and evaluate more advanced alert grouping methods.  
 In order to save the effort of creating a new version of AIT-ADS, the idea was born to instead augment it by mixing alerts of different scenarios or days and thereby create a dataset with a desired amount of noise and attacks which are more diffcult to group.
