@@ -65,7 +65,12 @@ def load_ground_truth_label_vocabs(
     label_vocabs = {}
     for k in keys:
         label_vocabs[k] = Vocabulary()
-        label_vocabs[k].load(f"{path}/{k}.json")
+        try:
+            label_vocabs[k].load(f"{path}/{k}.json")
+        except FileNotFoundError as e:
+            raise FileNotFoundError(
+                f"Could not find {path}/{k}.json. Have the vocabularies for configuration {configuration} been built?"
+            ) from e
 
     label_vocabs["time"] = default_collate_fn
     label_vocabs["raw_time"] = default_collate_fn
@@ -312,7 +317,7 @@ if __name__ == "__main__":
     raise NotImplementedError("This module is not meant to be executed as a script.")
 
     # execute the following code to construct the ground truth label vocabs
-    from deep_learning.aitads import AITAlertDataset
+    from alertbert.aitads import AITAlertDataset
 
     data = AITAlertDataset(split="all", flavour="original")
     label_vocabs = build_ground_truth_label_vocabs(data)
