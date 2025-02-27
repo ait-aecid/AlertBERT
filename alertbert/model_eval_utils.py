@@ -135,7 +135,7 @@ def load_data_tools(
                 sampler = AlertSequenceBatchSampler(
                     data,
                     context_size=params["context_size"],
-                    batch_size=128,
+                    batch_size=16,
                     drop_last=False,
                     shuffle=False,
                 )
@@ -166,7 +166,7 @@ def load_models(
         models[m] = MaskedLanguageModel(params=params, vocabs=data_tools[m]["vocabs"])
         models[m].load_state_dict(
             torch.load(path + f"/{m}/model.pt", weights_only=True, map_location=device),
-            strict=False,  # legacy models may have different keys
+            # strict=False,  # legacy models may have different keys
         )
         models[m].to(device)
         models[m].eval()

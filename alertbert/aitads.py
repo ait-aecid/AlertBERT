@@ -370,6 +370,7 @@ class AITAlertDatasetAugmented(MultiAlertDataset):
         else:
             scenario_templates = self.config[split]
 
+
         # get filenames and start time offsets
         start_time = int(
             dt.datetime.fromisoformat(self.config["start_time"]).timestamp()
@@ -378,6 +379,15 @@ class AITAlertDatasetAugmented(MultiAlertDataset):
         files = []
         attack_ids = []
         attack_id = 1
+        if split == "val":
+            for scenario in self.config["train"]:
+                for day in scenario:
+                    attack_id += len(day["attacks"])
+        elif split == "test":
+            for scenario in self.config["train"] + self.config["val"]:
+                for day in scenario:
+                    attack_id += len(day["attacks"])
+
         for scenario in scenario_templates:
             scenario_files = []
             scenario_file_start_times = []

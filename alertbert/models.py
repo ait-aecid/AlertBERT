@@ -60,7 +60,6 @@ class MaskedLangModelEmbeddingLayer(nn.Module):
         self.encoding = encoding
         self.vocabs = vocabs
         self.layernorm = nn.LayerNorm(dim)
-        self.dropout = nn.Dropout(0.1)
         self.embeddings = nn.ModuleDict(
             {
                 f: nn.Embedding(
@@ -85,7 +84,7 @@ class MaskedLangModelEmbeddingLayer(nn.Module):
     def forward(self, **src: dict[str, torch.Tensor]) -> torch.Tensor:
         x = [self.embeddings[k](src[k]) for k in self.embeddings]
         x = torch.sum(torch.stack(x), dim=0)
-        return self.dropout(self.layernorm(x))
+        return self.layernorm(x)
 
 
 class RotaryEmbedding(nn.Module):
@@ -198,8 +197,6 @@ class SelfAttention(nn.Module):
                 dim=self.dim_head, freqs=rotary_pos_enc_freqs
             )
         self.softmax = nn.Softmax(dim=-1)
-        self.attn_dropout = nn.Dropout(0.1)
-        self.out_dropout = nn.Dropout(0.1)
 
     def forward(
         self, x: torch.Tensor, p: torch.Tensor = None, return_attn_weights: bool = False
@@ -217,10 +214,10 @@ class SelfAttention(nn.Module):
         if return_attn_weights:
             return attn_weights
 
-        attn_output = torch.matmul(self.attn_dropout(attn_weights), value)
+        attn_output = torch.matmul(attn_weights, value)
         attn_output = attn_output.transpose(1, 2).contiguous()
         out = attn_output.view(x.size(0), x.size(1), self.d_model)
-        return self.out_dropout(self.Wo(out))
+        return self.Wo(out)
 
 
 class EncoderMLP(nn.Module):
@@ -535,18 +532,20 @@ class MaskedLangModelInferenceWrapper(TensorDictModule):
         super().__init__(
             nn.Sequential(OrderedDict({layer: model[layer] for layer in layers})),
             in_keys={
-                f: f for f in model["embedding"].features + model["embedding"].encoding
+                f: f for f in model["embedding"].features + [model.encoding]
             },
             out_keys=["output"],
         )
+        self.encoding = model.encoding
         self.module.forward = self._star_forward
 
     @torch.no_grad()
     def _star_forward(self, **x: dict[str, torch.Tensor]) -> torch.Tensor:
         """This function is used to override the forward method of the nn.Sequential module to make it compatible with varying numbers of input arguments."""
+        p = x.get(self.encoding, None)
         x = self.module[0](**x)
         for module in self.module[1:]:
-            x = module(x)
+            x = module(x, p)
         return x
 
 
@@ -575,10 +574,11 @@ class MaskedLangModelAttentionWrapper(MaskedLangModelInferenceWrapper):
             attention.append(
                 module.self_attn(
                     x=batch["output"],
+                    p=batch[self.encoding],
                     return_attn_weights=True,
                 )
             )
-            batch["output"] = module(batch["output"])
+            batch["output"] = module(batch["output"], batch[self.encoding])
         batch["attention"] = torch.stack(attention)
         return batch
 

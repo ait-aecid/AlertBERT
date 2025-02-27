@@ -104,7 +104,7 @@ heads = 4
 dim_per_head = 16
 ffw_factor = 4
 encoding_type = "rotary"
-rotary_max_exp = 12
+rotary_max_exp = 14
 rotary_cutoff = 0.75
 gamma = None
 lo = "fo" if gamma else "ce"
@@ -126,7 +126,7 @@ params = {
     "dim_feedforward": heads * dim_per_head * ffw_factor,
     "activation": "gelu",
     "gated_activation": True,
-    "encoding": "position",
+    "encoding": "raw_time",
     "enc_type": encoding_type,
     "encoding_freqs": [
         2 ** (-i * 2.0 / dim_per_head * rotary_max_exp) for i in range(int(dim_per_head // 2 * rotary_cutoff))
@@ -134,7 +134,7 @@ params = {
     if encoding_type == "rotary"
     else None,
     "biases": False,
-    "head_bias": True,
+    "head_bias": False,
     "tie_weights": True,
     "emb_init_std": (heads * dim_per_head) ** -0.5,
     # training
@@ -147,13 +147,13 @@ params = {
     "momentum": 0.9,
     "gamma": gamma,
     "class_balance": 2.0,
-    "target_ratio": 0.15,
+    "target_ratio": 0.2,
     "mask_ratio": 0.8,
     "perturb_ratio": 0.1,
     # files
     "path": "saved_models",
     "log": "train",
-    "id": f"{layers}l_{heads}h_test",
+    "id": f"{layers}l_{heads}h_nano",
 }
 
 ########################################################################################

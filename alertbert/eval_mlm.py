@@ -139,7 +139,7 @@ def eval_masked_lang_model(
 
 
 if __name__ == "__main__":
-    model_id = "mlm_1l_4h_ce_s_1000"
+    model_id = "mlm_1l_4h_base_3-1_60k"
     path = "saved_models"
     with open(path + f"/{model_id}/report.json") as f:
         report = json.load(f)
@@ -150,8 +150,8 @@ if __name__ == "__main__":
     device = get_device()
 
     logging.info("Loading data...")
-    train_data = AITAlertDataset(split="train")
-    val_data = AITAlertDataset(split="val")
+    train_data = AITAlertDataset(split="train", configuration=params["augment"])
+    val_data = AITAlertDataset(split="val", configuration=params["augment"])
 
     collate_function_map = load_feature_vocabs(
         path=f"{path}/{model_id}",
@@ -170,15 +170,15 @@ if __name__ == "__main__":
 
     train_sampler = AlertSequenceBatchSampler(
         train_data,
-        context_size=params["context_size"] - 2,
-        batch_size=128,
+        context_size=params["context_size"],
+        batch_size=16,
         drop_last=False,
         shuffle=False,
     )
     val_sampler = AlertSequenceBatchSampler(
         val_data,
-        context_size=params["context_size"] - 2,
-        batch_size=128,
+        context_size=params["context_size"],
+        batch_size=16,
         drop_last=False,
         shuffle=False,
     )

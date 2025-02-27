@@ -1,4 +1,6 @@
 import pickle
+from collections import Counter
+from collections.abc import Iterable
 from typing import Literal
 
 import matplotlib.pyplot as plt
@@ -71,6 +73,18 @@ def get_labels_int(str_labels: list[str], target_vocab: Vocabulary) -> np.ndarra
     return target_vocab([str_labels]).numpy().squeeze()
 
 
+def get_low_level_labels(
+    high_level_labels: Vocabulary, level: int, excluded_macro_label: str = "-"
+) -> list[str]:
+    """Returns a list of low level labels for the target vocabulary."""
+    c = Counter()
+    for label, count in high_level_labels.counter.items():
+        if label != excluded_macro_label:
+            c[".".join(label.split(".")[:level])] += count
+
+    return [label for label, count in c.most_common() if label != excluded_macro_label]
+
+
 # result computation functions
 
 
@@ -115,7 +129,7 @@ def eval_alert_grouping(
 
     Args:
         model (AbstractClusteringModel): The clustering model to be evaluated.
-        target (str, optional): The target label in the dataset. Defaults to "event_label".
+        target (str, optional): The target label in the dataset. Defaults to "hierarchical_event_label".
         loader (DataLoader): The data loader providing the dataset. Defaults to None.
         target_vocab (Vocabulary): The vocabulary containing the target labels. Defaults to None.
         epochs (int, optional): The number of epochs to run the evaluation. Defaults to 5.
@@ -132,6 +146,10 @@ def eval_alert_grouping(
             "TokenClusteringModel must be on CPU, joblib does not support GPU devices."
         )
 
+    assert target.startswith("hierarchical"), (
+        "Non-hierarchical labels have been deprecated in this function."
+    )
+
     # check n_jobs
     if n_jobs is None:
         n_jobs = 1
@@ -140,23 +158,40 @@ def eval_alert_grouping(
         model.block_parallelization()
 
     # set up labels
-    all_labels_str = get_str_labels(target_vocab)
+    all_labels_str = get_str_labels(target_vocab)  # level 3 labels
     all_labels_int = get_labels_int(all_labels_str, target_vocab)
     label_range = (all_labels_int[0], all_labels_int[-1])
 
+    lvl_2_labels = get_low_level_labels(target_vocab, 2, excluded_macro_label)
+    lvl_1_labels = get_low_level_labels(target_vocab, 1, excluded_macro_label)
+
     # initialize results dict
-    results = (
-        {label: {metric: [] for metric in metrics} for label in all_labels_str}
-        | {stat: [] for stat in batch_stats}
-        | {"macro": {metric: None for metric in metrics[1:]}}
-        | {
-            "model_params": None,
-            "summary": {
+    results = {
+        # these will store the (aggregated) metrics for every batch
+        "lvl3": {label: {metric: [] for metric in metrics} for label in all_labels_str},
+        "lvl2": {label: {metric: None for metric in metrics} for label in lvl_2_labels},
+        "lvl1": {label: {metric: None for metric in metrics} for label in lvl_1_labels},
+        "macro": {metric: None for metric in metrics[1:]},  # aka level 0
+        # meta data
+        "batch_stats": {stat: [] for stat in batch_stats},
+        "model_params": None,
+        # these will store the (aggregated) metrics averaged over all batches
+        "summary": {
+            "lvl3": {
                 label: {metric: (None, None) for metric in metrics}
-                for label in ["macro"] + all_labels_str
+                for label in all_labels_str
             },
-        }
-    )
+            "lvl2": {
+                label: {metric: (None, None) for metric in metrics}
+                for label in lvl_2_labels
+            },
+            "lvl1": {
+                label: {metric: (None, None) for metric in metrics}
+                for label in lvl_1_labels
+            },
+            "macro": {"macro": {metric: (None, None) for metric in metrics[1:]}},
+        },
+    }
 
     # define encapsulation of model call and cluster count computation for parallelization
     def model_call(batch: TensorDict) -> tuple[np.ndarray[int], np.ndarray[int]]:
@@ -175,19 +210,19 @@ def eval_alert_grouping(
             cluster_sizes = counts.sum(axis=0)
             true_label_counts = counts.sum(axis=1)
             total = true_label_counts.sum()
-            results["context_entropy"].append(entropy(true_label_counts))
-            results["context_purity"].append(np.max(true_label_counts) / total)
-            results["num_labels"].append(np.nonzero(true_label_counts)[0].shape[0])
-            results["num_clusters"].append(cluster_sizes.shape[0])
-            results["context_size"].append(context_size)
-            results["context_time"].append(context_time)
+            results["batch_stats"]["context_entropy"].append(entropy(true_label_counts))
+            results["batch_stats"]["context_purity"].append(np.max(true_label_counts) / total)
+            results["batch_stats"]["num_labels"].append(np.nonzero(true_label_counts)[0].shape[0])
+            results["batch_stats"]["num_clusters"].append(cluster_sizes.shape[0])
+            results["batch_stats"]["context_size"].append(context_size)
+            results["batch_stats"]["context_time"].append(context_time)
 
             for label, int_label in zip(all_labels_str, all_labels_int):
                 idx = int_label - label_range[0]
 
                 # continue if label does not appear in batch
                 if true_label_counts[idx] == 0:
-                    for k, v in results[label].items():
+                    for k, v in results["lvl3"][label].items():
                         if k == "count":
                             v.append(0)
                         else:
@@ -198,80 +233,127 @@ def eval_alert_grouping(
                 tp = np.sum(counts[idx] * counts[idx])
                 fp = np.sum(counts[idx] * (cluster_sizes - counts[idx]))
                 fn = np.sum(counts[idx] * (true_label_counts[idx] - counts[idx]))
-                tn = np.sum(
-                    counts[idx]
-                    * (total - cluster_sizes - true_label_counts[idx] + counts[idx])
-                )
+                tn = np.sum(counts[idx] * (total - cluster_sizes - true_label_counts[idx] + counts[idx]))
                 acc = (tp + tn) / (true_label_counts[idx] * total)
-                prec = tp / (
-                    tp + fp
-                )  # tp > 0 bc each token with itself is always a tp pair
+                prec = tp / (tp + fp)  # tp > 0 bc each token with itself is always a tp pair
                 rec = tp / (tp + fn)
                 tnr = tn / (fp + tn) if fp + tn > 0 else np.nan
                 f1 = 2 * prec * rec / (prec + rec)
                 mcc = (
                     (float(tp) * float(tn) - float(fp) * float(fn))
-                    / np.sqrt(
-                        float(tp + fp)
-                        * float(tp + fn)
-                        * float(tn + fp)
-                        * float(tn + fn)
-                    )
+                    / np.sqrt(float(tp + fp) * float(tp + fn) * float(tn + fp) * float(tn + fn))
                     if float(tn + fp) * float(tn + fn) > 0
                     else np.nan
                 )
 
                 # add results to results dict
-                results[label]["count"].append(true_label_counts[idx])
-                results[label]["tp"].append(tp)
-                results[label]["fp"].append(fp)
-                results[label]["fn"].append(fn)
-                results[label]["tn"].append(tn)
-                results[label]["accuracy"].append(acc)
-                results[label]["precision"].append(prec)
-                results[label]["recall"].append(rec)
-                results[label]["tnr"].append(tnr)
-                results[label]["f1"].append(f1)
-                results[label]["mcc"].append(mcc)
+                results["lvl3"][label]["count"].append(true_label_counts[idx])
+                results["lvl3"][label]["tp"].append(tp)
+                results["lvl3"][label]["fp"].append(fp)
+                results["lvl3"][label]["fn"].append(fn)
+                results["lvl3"][label]["tn"].append(tn)
+                results["lvl3"][label]["accuracy"].append(acc)
+                results["lvl3"][label]["precision"].append(prec)
+                results["lvl3"][label]["recall"].append(rec)
+                results["lvl3"][label]["tnr"].append(tnr)
+                results["lvl3"][label]["f1"].append(f1)
+                results["lvl3"][label]["mcc"].append(mcc)
 
     # cast results to numpy arrays and compute macro results
     for metric in metrics:
+        # level 3
         for label in all_labels_str:
-            results[label][metric] = np.array(results[label][metric])
-            results["summary"][label][metric] = (
-                np.nanmean(results[label][metric]),
-                np.nanstd(results[label][metric]),
+            results["lvl3"][label][metric] = np.array(results["lvl3"][label][metric])
+            results["summary"]["lvl3"][label][metric] = (
+                np.nanmean(results["lvl3"][label][metric]),
+                np.nanstd(results["lvl3"][label][metric]),
             )
+
+        # level 2
+        for label in lvl_2_labels:
+            results["lvl2"][label][metric] = np.nanmean(
+                np.stack(
+                    [
+                        results["lvl3"][lvl3_label][metric]
+                        for lvl3_label in all_labels_str
+                        if lvl3_label.startswith(label)
+                    ],
+                    axis=0,
+                ),
+                axis=0,
+            )
+            results["summary"]["lvl2"][label][metric] = (
+                np.nanmean(
+                    [
+                        results["summary"]["lvl3"][lvl3_label][metric][0]
+                        for lvl3_label in all_labels_str
+                        if lvl3_label.startswith(label)
+                    ]
+                ),
+                np.nanstd(
+                    [
+                        results["summary"]["lvl3"][lvl3_label][metric][0]
+                        for lvl3_label in all_labels_str
+                        if lvl3_label.startswith(label)
+                    ]
+                ),
+            )
+
+        # level 1
+        for label in lvl_1_labels:
+            results["lvl1"][label][metric] = np.nanmean(
+                np.stack(
+                    [
+                        results["lvl2"][lvl2_label][metric]
+                        for lvl2_label in lvl_2_labels
+                        if lvl2_label.startswith(label)
+                    ],
+                    axis=0,
+                ),
+                axis=0,
+            )
+            results["summary"]["lvl1"][label][metric] = (
+                np.nanmean(
+                    [
+                        results["summary"]["lvl2"][lvl2_label][metric][0]
+                        for lvl2_label in lvl_2_labels
+                        if lvl2_label.startswith(label)
+                    ]
+                ),
+                np.nanstd(
+                    [
+                        results["summary"]["lvl2"][lvl2_label][metric][0]
+                        for lvl2_label in lvl_2_labels
+                        if lvl2_label.startswith(label)
+                    ]
+                ),
+            )
+
+        # level 0
         results["macro"][metric] = np.nanmean(
             np.stack(
-                [
-                    results[label][metric]
-                    for label in all_labels_str
-                    if label != excluded_macro_label
-                ],
+                [results["lvl1"][label][metric] for label in lvl_1_labels],
                 axis=0,
             ),
             axis=0,
         )
-        results["summary"]["macro"][metric] = (
+        results["summary"]["macro"]["macro"][metric] = (
             np.nanmean(
                 [
-                    results["summary"][label][metric][0]
-                    for label in all_labels_str
-                    if label != excluded_macro_label
+                    results["summary"]["lvl1"][lvl_1_label][metric][0]
+                    for lvl_1_label in lvl_1_labels
                 ]
             ),
             np.nanstd(
                 [
-                    results["summary"][label][metric][0]
-                    for label in all_labels_str
-                    if label != excluded_macro_label
+                    results["summary"]["lvl1"][lvl_1_label][metric][0]
+                    for lvl_1_label in lvl_1_labels
                 ]
             ),
         )
 
     for stat in batch_stats:
-        results[stat] = np.array(results[stat])
+        results["batch_stats"][stat] = np.array(results["batch_stats"][stat])
 
     return results
 
@@ -335,7 +417,7 @@ def get_scatter_plot_figure(
     fig, all_axs = plt.subplots(
         len(used_metrics),
         4,
-        figsize=(16, 4.5 * len(used_metrics)),
+        figsize=(4 * len(plot_cols) , 4.5 * len(used_metrics)),
         sharey="row",
         sharex="row",
     )
@@ -380,7 +462,7 @@ def grouping_results_v_discriminator_plot(
         excluded_label (str, optional): The label to be excluded from plotting. This is supposed to be the false positive label. Defaults to "-".
     """
 
-    all_labels_str = get_str_labels(target_vocab)
+    all_labels_str = get_low_level_labels(target_vocab, 1, excluded_label)
     used_metrics = get_metrics(exclude_raw_metrics)
     fig, all_axs = get_scatter_plot_figure(used_metrics, disc)
 
@@ -389,7 +471,7 @@ def grouping_results_v_discriminator_plot(
 
         results = train_results if col[0] == "train" else val_results
 
-        d = results[disc]
+        d = results["batch_stats"][disc]
 
         for i, m in enumerate(used_metrics):
             ax = axs[i]
@@ -397,19 +479,19 @@ def grouping_results_v_discriminator_plot(
                 x_vals = []
                 y_vals = []
                 c_vals = []
-                for label in all_labels_str:
+                for j, label in enumerate(all_labels_str):
                     if label == excluded_label:
                         continue
                     x_vals.append(d)
-                    y_vals.append(results[label][m])
-                    c_vals.append(target_vocab(label) * np.ones_like(d))
+                    y_vals.append(results["lvl1"][label][m])
+                    c_vals.append(j * np.ones_like(d))
                 x_vals = np.concatenate(x_vals)
                 y_vals = np.concatenate(y_vals)
                 c_vals = np.concatenate(c_vals)
             else:
                 x_vals = d
                 y_vals = results["macro"][m]
-                c_vals = results[macro_colour]
+                c_vals = results["batch_stats"][macro_colour]
             ax.scatter(
                 x=x_vals, y=y_vals, c=c_vals, s=20.0, alpha=0.3, edgecolors="none"
             )
@@ -442,7 +524,7 @@ def model_comparison_plot(
         excluded_label (str, optional): The label to be excluded from plotting. This is supposed to be the false positive label. Defaults to "-".
     """
 
-    all_labels_str = get_str_labels(target_vocab)
+    all_labels_str = get_low_level_labels(target_vocab, 1, excluded_label)
     used_metrics = get_metrics(exclude_raw_metrics)
     fig, all_axs = get_scatter_plot_figure(
         used_metrics,
@@ -466,13 +548,13 @@ def model_comparison_plot(
                 x_vals = []
                 y_vals = []
                 c_vals = []
-                for label in all_labels_str:
+                for j,label in enumerate(all_labels_str):
                     if label == excluded_label:
                         continue
-                    x_vals.append(results_x[label][m])
-                    y_vals.append(results_y[label][m])
+                    x_vals.append(results_x["lvl1"][label][m])
+                    y_vals.append(results_y["lvl1"][label][m])
                     c_vals.append(
-                        target_vocab(label) * np.ones_like(results_x[label][m])
+                        j * np.ones_like(results_x["lvl1"][label][m])
                     )
                 x_vals = np.concatenate(x_vals)
                 y_vals = np.concatenate(y_vals)
@@ -480,7 +562,7 @@ def model_comparison_plot(
             else:
                 x_vals = results_x["macro"][m]
                 y_vals = results_y["macro"][m]
-                c_vals = results_x[macro_colour]
+                c_vals = results_x["batch_stats"][macro_colour]
             ax.scatter(
                 x=x_vals, y=y_vals, c=c_vals, s=20.0, alpha=0.3, edgecolors="none"
             )
@@ -495,30 +577,40 @@ def pprint_eval_report(
     target_vocab: Vocabulary,
     excluded_label: str = "-",
     exclude_raw_metrics: bool = True,
+    hierarchical_label_levels: Iterable[int] = [0, 1],
 ) -> None:
     """Pretty prints the evaluation results of a clustering model."""
-    all_labels_str = get_str_labels(target_vocab)
+    level_labels = {
+        0: ["macro"],
+        1: get_low_level_labels(target_vocab, 1, excluded_label),
+        2: get_low_level_labels(target_vocab, 2, excluded_label),
+        3: get_str_labels(target_vocab),
+    }
     used_metrics = get_metrics(exclude_raw_metrics)
-    print(f"{'label':<22} | " + " | ".join([f"{m:<25}" for m in used_metrics]))
-    print("-" * (23 + (28 * len(used_metrics))))
-    for label in ["macro"] + all_labels_str:
-        if label == excluded_label:
-            continue
-        print(
-            f"{label:<22} | "
-            + " | ".join(
-                [
-                    f"{train_results['summary'][label][m][0]:<5.3f}±{
-                        train_results['summary'][label][m][1]:<5.3f
-                    } | {val_results['summary'][label][m][0]:<5.3f}±{
-                        val_results['summary'][label][m][1]:<5.3f
-                    }"
-                    for m in used_metrics
-                ]
+    label_str_len = sum([5, 17, 2, 3][: max(hierarchical_label_levels) + 1])
+    print(
+        f"{'label':<{label_str_len}} | "
+        + " | ".join([f"{m:<25}" for m in used_metrics])
+    )
+    for level in hierarchical_label_levels:
+        level_str = f"lvl{level}" if level else "macro"
+        print("-" * ((label_str_len + 1) + (28 * len(used_metrics))))
+        for label in level_labels[level]:
+            if label == excluded_label:
+                continue
+            print(
+                f"{label:<{label_str_len}} | "
+                + " | ".join(
+                    [
+                        f"{train_results['summary'][level_str][label][m][0]:<5.3f}±{
+                            train_results['summary'][level_str][label][m][1]:<5.3f
+                        } | {val_results['summary'][level_str][label][m][0]:<5.3f}±{
+                            val_results['summary'][level_str][label][m][1]:<5.3f
+                        }"
+                        for m in used_metrics
+                    ]
+                )
             )
-        )
-        if label == "macro":
-            print("-" * (23 + (28 * len(used_metrics))))
 
 
 def pprint_eval_diff(
@@ -529,32 +621,42 @@ def pprint_eval_diff(
     target_vocab: Vocabulary,
     excluded_label: str = "-",
     exclude_raw_metrics: bool = True,
+    hierarchical_label_levels: Iterable[int] = [0, 1],
 ) -> None:
     """Pretty prints the difference of the evaluation results of two clustering models."""
-    all_labels_str = get_str_labels(target_vocab)
+    level_labels = {
+        0: ["macro"],
+        1: get_low_level_labels(target_vocab, 1, excluded_label),
+        2: get_low_level_labels(target_vocab, 2, excluded_label),
+        3: get_str_labels(target_vocab),
+    }
     used_metrics = get_metrics(exclude_raw_metrics)
-    print(f"{'label':<22} | " + " | ".join([f"{m:<17}" for m in used_metrics]))
-    print("-" * (23 + (20 * len(used_metrics))))
-    for label in ["macro"] + all_labels_str:
-        if label == excluded_label:
-            continue
-        print(
-            f"{label:<22} | "
-            + " | ".join(
-                [
-                    f"{
-                        train_results2['summary'][label][m][0]
-                        - train_results1['summary'][label][m][0]:< 7.3f
-                    } | {
-                        val_results2['summary'][label][m][0]
-                        - val_results1['summary'][label][m][0]:< 7.3f
-                    }"
-                    for m in used_metrics
-                ]
+    label_str_len = sum([5, 17, 2, 3][: max(hierarchical_label_levels) + 1])
+    print(
+        f"{'label':<{label_str_len}} | "
+        + " | ".join([f"{m:<17}" for m in used_metrics])
+    )
+    for level in hierarchical_label_levels:
+        level_str = f"lvl{level}" if level else "macro"
+        print("-" * ((label_str_len + 1) + (20 * len(used_metrics))))
+        for label in level_labels[level]:
+            if label == excluded_label:
+                continue
+            print(
+                f"{label:<{label_str_len}} | "
+                + " | ".join(
+                    [
+                        f"{
+                            train_results2['summary'][level_str][label][m][0]
+                            - train_results1['summary'][level_str][label][m][0]:< 7.3f
+                        } | {
+                            val_results2['summary'][level_str][label][m][0]
+                            - val_results1['summary'][level_str][label][m][0]:< 7.3f
+                        }"
+                        for m in used_metrics
+                    ]
+                )
             )
-        )
-        if label == "macro":
-            print("-" * (23 + (20 * len(used_metrics))))
 
 
 if __name__ == "__main__":
@@ -576,8 +678,8 @@ if __name__ == "__main__":
 
     log_to_stdout()
     logging.info("Loading data...")
-    train_data = AITAlertDataset(split="train", config=aitads_a_config)
-    val_data = AITAlertDataset(split="val", config=aitads_a_config)
+    train_data = AITAlertDataset(split="train", configuration=aitads_a_config)
+    val_data = AITAlertDataset(split="val", configuration=aitads_a_config)
     label_vocabs = load_ground_truth_label_vocabs(path, aitads_a_config)
 
     # execute the following block of code to compute results for MLM based models
@@ -622,10 +724,18 @@ if __name__ == "__main__":
 
         # models to be used
         model_ids = [
-            "mlm_1l_4h_no_seos_3000",
-            "mlm_1l_4h_cb0_3000",
-            "mlm_1l_4h_cb1_3000",
-            "mlm_1l_4h_cb3_3000",
+            "mlm_1l_4h_base_3-1_60k",
+            "mlm_1l_4h_base_3_3000",
+            "mlm_1l_4h_no_bias_3000",
+            "mlm_1l_4h_short3-1_30k",
+            "mlm_1l_4h_1wd_long_5e-3lr_60k",
+            "mlm_1l_4h_1wd_shor_5e-3lr_30k",
+            "mlm_1l_4h_no_drop_60k",
+            "mlm_1l_4h_no_ties_60k",
+            "mlm_1l_4h_zero_0k",
+            "mlm_1l_4h_nano_0k",
+            "mlm_1l_4h_nano_1k",
+            "mlm_1l_4h_nano_2k",
         ]
         reports, model_param_dicts = load_reports(model_ids, path)
 
@@ -641,6 +751,10 @@ if __name__ == "__main__":
 
         for key, model in models.items():
             logging.info(f"Evaluating model {key} ...")
+
+            assert model_param_dicts[key]["context_size"] == 4096, (
+                "Context size must be 4096 for evaluation to be the same across models."
+            )
 
             # set up data loaders
             train_sampler = AlertSequenceBatchSampler(
@@ -716,7 +830,7 @@ if __name__ == "__main__":
             )
 
     # execute the following block of code to compute results for time delta models
-    if True:
+    if False:
         logging.info("Evaluating TimeDelta models...")
 
         # define parameters
@@ -726,7 +840,7 @@ if __name__ == "__main__":
                 "delta": None,  # to be left blank here
             },
             "data_split": None,  # to be left blank here
-            "context_size": 4096,
+            "context_size": 4096, # Do not change this value! It must be the same for all models so that the evaluation is comparable.
         }
 
         # deltas to be used
