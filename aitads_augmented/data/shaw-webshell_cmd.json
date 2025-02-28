@@ -1,0 +1,35 @@
+[
+{
+"time":0,
+"name":"AMiner: High entropy in Apache Access request.",
+"ip":"192.168.188.179",
+"host":"intranet_server",
+"short":"A-Acc-Ent2",
+"time_label":"webshell",
+"event_label":"webshell_cmd",
+"hierarchical_event_label":"webshell_cmd.0.",
+"raw_time":0.0
+},
+{
+"time":5,
+"name":"AMiner: High entropy in Apache Access request.",
+"ip":"192.168.188.179",
+"host":"intranet_server",
+"short":"A-Acc-Ent2",
+"time_label":"cracking",
+"event_label":"webshell_cmd",
+"hierarchical_event_label":"webshell_cmd.0.",
+"raw_time":5.0
+},
+{
+"time":32,
+"name":"AMiner: High entropy in Apache Access request.",
+"ip":"192.168.188.179",
+"host":"intranet_server",
+"short":"A-Acc-Ent2",
+"time_label":"cracking",
+"event_label":"webshell_cmd",
+"hierarchical_event_label":"webshell_cmd.0.",
+"raw_time":32.0
+}
+]

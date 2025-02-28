@@ -1,0 +1,24 @@
+[
+{
+"time":0,
+"name":"AMiner: New service_start parameter combination in Audit logs.",
+"ip":"172.21.240.214",
+"host":"internal_share",
+"short":"A-Aud-Com4",
+"time_label":"service_stop",
+"event_label":"dnsteal",
+"hierarchical_event_label":"dnsteal.2.",
+"raw_time":0.49000000953674316
+},
+{
+"time":0,
+"name":"AMiner: New service_stop parameter combination in Audit logs.",
+"ip":"172.21.240.214",
+"host":"internal_share",
+"short":"A-Aud-Com4",
+"time_label":"service_stop",
+"event_label":"dnsteal",
+"hierarchical_event_label":"dnsteal.2.",
+"raw_time":0.5
+}
+]

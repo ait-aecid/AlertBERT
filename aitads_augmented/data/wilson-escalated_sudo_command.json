@@ -1,0 +1,90 @@
+[
+{
+"time":0,
+"name":"Wazuh: First time user executed sudo.",
+"ip":"172.26.243.167",
+"host":"intranet_server",
+"short":"W-Aut-Sud",
+"time_label":"privilege_escalation",
+"event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
+"raw_time":0.0
+},
+{
+"time":7,
+"name":"Wazuh: PAM: Login session opened.",
+"ip":"172.26.243.167",
+"host":"intranet_server",
+"short":"W-Aut-Pam1",
+"time_label":"privilege_escalation",
+"event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
+"raw_time":7.0
+},
+{
+"time":7,
+"name":"Wazuh: PAM: Login session closed.",
+"ip":"172.26.243.167",
+"host":"intranet_server",
+"short":"W-Aut-Pam1",
+"time_label":"privilege_escalation",
+"event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
+"raw_time":7.0
+},
+{
+"time":7,
+"name":"Wazuh: Successful sudo to ROOT executed.",
+"ip":"172.26.243.167",
+"host":"intranet_server",
+"short":"W-Aut-Sud",
+"time_label":"privilege_escalation",
+"event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
+"raw_time":7.0
+},
+{
+"time":18,
+"name":"Wazuh: PAM: Login session opened.",
+"ip":"172.26.243.167",
+"host":"intranet_server",
+"short":"W-Aut-Pam1",
+"time_label":"privilege_escalation",
+"event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
+"raw_time":18.0
+},
+{
+"time":18,
+"name":"Wazuh: Successful sudo to ROOT executed.",
+"ip":"172.26.243.167",
+"host":"intranet_server",
+"short":"W-Aut-Sud",
+"time_label":"privilege_escalation",
+"event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
+"raw_time":18.0
+},
+{
+"time":19,
+"name":"Wazuh: PAM: Login session closed.",
+"ip":"172.26.243.167",
+"host":"intranet_server",
+"short":"W-Aut-Pam1",
+"time_label":"privilege_escalation",
+"event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
+"raw_time":19.0
+},
+{
+"time":19,
+"name":"AMiner: New syscall parameter combination in Audit logs.",
+"ip":"172.26.243.167",
+"host":"intranet_server",
+"short":"A-Aud-Com5",
+"time_label":"privilege_escalation",
+"event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
+"raw_time":19.049999952316284
+}
+]

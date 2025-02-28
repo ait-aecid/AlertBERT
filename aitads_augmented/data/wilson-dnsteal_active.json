@@ -1,0 +1,13 @@
+[
+{
+"time":0,
+"name":"AMiner: Unusual occurrence frequencies of query records in DNS logs.",
+"ip":"10.182.192.1",
+"host":"inet-firewall",
+"short":"A-Dns-Frq",
+"time_label":"false_positive",
+"event_label":"dnsteal",
+"hierarchical_event_label":"dnsteal.1.",
+"raw_time":0.0
+}
+]

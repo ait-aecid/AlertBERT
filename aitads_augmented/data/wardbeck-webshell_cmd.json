@@ -1,0 +1,46 @@
+[
+{
+"time":0,
+"name":"AMiner: Unusual occurrence frequencies of Apache Access request methods.",
+"ip":"172.21.241.88",
+"host":"intranet_server",
+"short":"A-Acc-Clc",
+"time_label":"webshell",
+"event_label":"webshell_cmd",
+"hierarchical_event_label":"webshell_cmd.0.",
+"raw_time":0.0
+},
+{
+"time":67,
+"name":"AMiner: High entropy in Apache Access request.",
+"ip":"172.21.241.88",
+"host":"intranet_server",
+"short":"A-Acc-Ent2",
+"time_label":"webshell",
+"event_label":"webshell_cmd",
+"hierarchical_event_label":"webshell_cmd.0.",
+"raw_time":67.0
+},
+{
+"time":69,
+"name":"AMiner: High entropy in Apache Access request.",
+"ip":"172.21.241.88",
+"host":"intranet_server",
+"short":"A-Acc-Ent2",
+"time_label":"cracking",
+"event_label":"webshell_cmd",
+"hierarchical_event_label":"webshell_cmd.0.",
+"raw_time":69.0
+},
+{
+"time":98,
+"name":"AMiner: High entropy in Apache Access request.",
+"ip":"172.21.241.88",
+"host":"intranet_server",
+"short":"A-Acc-Ent2",
+"time_label":"cracking",
+"event_label":"webshell_cmd",
+"hierarchical_event_label":"webshell_cmd.0.",
+"raw_time":98.0
+}
+]

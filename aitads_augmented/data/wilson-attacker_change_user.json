@@ -1,0 +1,123 @@
+[
+{
+"time":0,
+"name":"AMiner: New event type.",
+"ip":"172.26.243.167",
+"host":"intranet_server",
+"short":"A-All-Evt",
+"time_label":"privilege_escalation",
+"event_label":"attacker_change_user",
+"hierarchical_event_label":"attacker_change_user.0.",
+"raw_time":0.0
+},
+{
+"time":0,
+"name":"AMiner: New event type.",
+"ip":"172.26.243.167",
+"host":"intranet_server",
+"short":"A-All-Evt",
+"time_label":"privilege_escalation",
+"event_label":"attacker_change_user",
+"hierarchical_event_label":"attacker_change_user.0.",
+"raw_time":0.0
+},
+{
+"time":0,
+"name":"AMiner: New event type.",
+"ip":"172.26.243.167",
+"host":"intranet_server",
+"short":"A-All-Evt",
+"time_label":"privilege_escalation",
+"event_label":"attacker_change_user",
+"hierarchical_event_label":"attacker_change_user.0.",
+"raw_time":0.0
+},
+{
+"time":0,
+"name":"Wazuh: User successfully changed UID.",
+"ip":"172.26.243.167",
+"host":"intranet_server",
+"short":"W-Aut-Uid",
+"time_label":"privilege_escalation",
+"event_label":"attacker_change_user",
+"hierarchical_event_label":"attacker_change_user.0.",
+"raw_time":0.0
+},
+{
+"time":0,
+"name":"Wazuh: PAM: Login session opened.",
+"ip":"172.26.243.167",
+"host":"intranet_server",
+"short":"W-Aut-Pam1",
+"time_label":"privilege_escalation",
+"event_label":"attacker_change_user",
+"hierarchical_event_label":"attacker_change_user.0.",
+"raw_time":0.0
+},
+{
+"time":0,
+"name":"Wazuh: PAM: Login session opened.",
+"ip":"172.26.243.167",
+"host":"intranet_server",
+"short":"W-Aut-Pam1",
+"time_label":"privilege_escalation",
+"event_label":"attacker_change_user",
+"hierarchical_event_label":"attacker_change_user.0.",
+"raw_time":0.0
+},
+{
+"time":0,
+"name":"AMiner: New user_auth parameter combination in Audit logs.",
+"ip":"172.26.243.167",
+"host":"intranet_server",
+"short":"A-Aud-Com6",
+"time_label":"privilege_escalation",
+"event_label":"attacker_change_user",
+"hierarchical_event_label":"attacker_change_user.0.",
+"raw_time":0.6500000953674316
+},
+{
+"time":0,
+"name":"AMiner: New user_acct parameter combination in Audit logs.",
+"ip":"172.26.243.167",
+"host":"intranet_server",
+"short":"A-Aud-Com6",
+"time_label":"privilege_escalation",
+"event_label":"attacker_change_user",
+"hierarchical_event_label":"attacker_change_user.0.",
+"raw_time":0.6500000953674316
+},
+{
+"time":0,
+"name":"AMiner: New cred_acq parameter combination in Audit logs.",
+"ip":"172.26.243.167",
+"host":"intranet_server",
+"short":"A-Aud-Com2",
+"time_label":"privilege_escalation",
+"event_label":"attacker_change_user",
+"hierarchical_event_label":"attacker_change_user.0.",
+"raw_time":0.6600000858306885
+},
+{
+"time":0,
+"name":"AMiner: New cred_acq parameter combination in Audit logs.",
+"ip":"172.26.243.167",
+"host":"intranet_server",
+"short":"A-Aud-Com2",
+"time_label":"privilege_escalation",
+"event_label":"attacker_change_user",
+"hierarchical_event_label":"attacker_change_user.0.",
+"raw_time":0.7599999904632568
+},
+{
+"time":1,
+"name":"AMiner: New user_start parameter combination in Audit logs.",
+"ip":"172.26.243.167",
+"host":"intranet_server",
+"short":"A-Aud-Com6",
+"time_label":"privilege_escalation",
+"event_label":"attacker_change_user",
+"hierarchical_event_label":"attacker_change_user.0.",
+"raw_time":1.0099999904632568
+}
+]

@@ -1,0 +1,101 @@
+[
+{
+"time":0,
+"name":"AMiner: New characters in DNS domain.",
+"ip":"172.27.180.4",
+"host":"inet-firewall",
+"short":"A-Dns-Chr",
+"time_label":"network_scans",
+"event_label":"dns_scan",
+"hierarchical_event_label":"dns_scan.0.",
+"raw_time":0.0
+},
+{
+"time":0,
+"name":"AMiner: New characters in DNS domain.",
+"ip":"172.27.180.4",
+"host":"inet-firewall",
+"short":"A-Dns-Chr",
+"time_label":"network_scans",
+"event_label":"dns_scan",
+"hierarchical_event_label":"dns_scan.0.",
+"raw_time":0.0
+},
+{
+"time":0,
+"name":"AMiner: New characters in DNS domain.",
+"ip":"172.27.180.4",
+"host":"inet-firewall",
+"short":"A-Dns-Chr",
+"time_label":"network_scans",
+"event_label":"dns_scan",
+"hierarchical_event_label":"dns_scan.0.",
+"raw_time":0.0
+},
+{
+"time":0,
+"name":"AMiner: New characters in DNS domain.",
+"ip":"172.27.180.4",
+"host":"inet-firewall",
+"short":"A-Dns-Chr",
+"time_label":"network_scans",
+"event_label":"dns_scan",
+"hierarchical_event_label":"dns_scan.0.",
+"raw_time":0.0
+},
+{
+"time":0,
+"name":"AMiner: New characters in DNS domain.",
+"ip":"172.27.180.4",
+"host":"inet-firewall",
+"short":"A-Dns-Chr",
+"time_label":"network_scans",
+"event_label":"dns_scan",
+"hierarchical_event_label":"dns_scan.0.",
+"raw_time":0.0
+},
+{
+"time":0,
+"name":"AMiner: New characters in DNS domain.",
+"ip":"172.27.180.4",
+"host":"inet-firewall",
+"short":"A-Dns-Chr",
+"time_label":"network_scans",
+"event_label":"dns_scan",
+"hierarchical_event_label":"dns_scan.0.",
+"raw_time":0.0
+},
+{
+"time":0,
+"name":"AMiner: New characters in DNS domain.",
+"ip":"172.27.180.4",
+"host":"inet-firewall",
+"short":"A-Dns-Chr",
+"time_label":"network_scans",
+"event_label":"dns_scan",
+"hierarchical_event_label":"dns_scan.0.",
+"raw_time":0.0
+},
+{
+"time":0,
+"name":"AMiner: New characters in DNS domain.",
+"ip":"172.27.180.4",
+"host":"inet-firewall",
+"short":"A-Dns-Chr",
+"time_label":"network_scans",
+"event_label":"dns_scan",
+"hierarchical_event_label":"dns_scan.0.",
+"raw_time":0.0
+},
+{
+"time":0,
+"name":"AMiner: New characters in DNS domain.",
+"ip":"172.27.180.4",
+"host":"inet-firewall",
+"short":"A-Dns-Chr",
+"time_label":"network_scans",
+"event_label":"dns_scan",
+"hierarchical_event_label":"dns_scan.0.",
+"raw_time":0.0
+}
+]

@@ -1,0 +1,167 @@
+[
+{
+"time":0,
+"name":"AMiner: New event type.",
+"ip":"10.143.2.4",
+"host":"intranet_server",
+"short":"A-All-Evt",
+"time_label":"privilege_escalation",
+"event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
+"raw_time":0.0
+},
+{
+"time":0,
+"name":"Wazuh: Successful sudo to ROOT executed.",
+"ip":"10.143.2.4",
+"host":"intranet_server",
+"short":"W-Aut-Sud",
+"time_label":"privilege_escalation",
+"event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
+"raw_time":0.0
+},
+{
+"time":8,
+"name":"AMiner: New event type.",
+"ip":"10.143.2.4",
+"host":"intranet_server",
+"short":"A-All-Evt",
+"time_label":"privilege_escalation",
+"event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
+"raw_time":8.0
+},
+{
+"time":8,
+"name":"AMiner: New event type.",
+"ip":"10.143.2.4",
+"host":"intranet_server",
+"short":"A-All-Evt",
+"time_label":"privilege_escalation",
+"event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
+"raw_time":8.0
+},
+{
+"time":8,
+"name":"AMiner: New event type.",
+"ip":"10.143.2.4",
+"host":"intranet_server",
+"short":"A-All-Evt",
+"time_label":"privilege_escalation",
+"event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
+"raw_time":8.0
+},
+{
+"time":8,
+"name":"Wazuh: Successful sudo to ROOT executed.",
+"ip":"10.143.2.4",
+"host":"intranet_server",
+"short":"W-Aut-Sud",
+"time_label":"privilege_escalation",
+"event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
+"raw_time":8.0
+},
+{
+"time":8,
+"name":"Wazuh: PAM: Login session opened.",
+"ip":"10.143.2.4",
+"host":"intranet_server",
+"short":"W-Aut-Pam1",
+"time_label":"privilege_escalation",
+"event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
+"raw_time":8.0
+},
+{
+"time":8,
+"name":"Wazuh: PAM: Login session closed.",
+"ip":"10.143.2.4",
+"host":"intranet_server",
+"short":"W-Aut-Pam1",
+"time_label":"privilege_escalation",
+"event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
+"raw_time":8.0
+},
+{
+"time":8,
+"name":"AMiner: New event type.",
+"ip":"10.143.2.4",
+"host":"intranet_server",
+"short":"A-All-Evt",
+"time_label":"privilege_escalation",
+"event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
+"raw_time":8.240000009536743
+},
+{
+"time":8,
+"name":"AMiner: New user_cmd parameter combination in Audit logs.",
+"ip":"10.143.2.4",
+"host":"intranet_server",
+"short":"A-Aud-Com6",
+"time_label":"privilege_escalation",
+"event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
+"raw_time":8.240000009536743
+},
+{
+"time":8,
+"name":"AMiner: New event type.",
+"ip":"10.143.2.4",
+"host":"intranet_server",
+"short":"A-All-Evt",
+"time_label":"privilege_escalation",
+"event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
+"raw_time":8.240000009536743
+},
+{
+"time":8,
+"name":"AMiner: New cred_refr parameter combination in Audit logs.",
+"ip":"10.143.2.4",
+"host":"intranet_server",
+"short":"A-Aud-Com2",
+"time_label":"privilege_escalation",
+"event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
+"raw_time":8.240000009536743
+},
+{
+"time":8,
+"name":"AMiner: New user_start parameter combination in Audit logs.",
+"ip":"10.143.2.4",
+"host":"intranet_server",
+"short":"A-Aud-Com6",
+"time_label":"privilege_escalation",
+"event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
+"raw_time":8.240000009536743
+},
+{
+"time":8,
+"name":"AMiner: New user_end parameter combination in Audit logs.",
+"ip":"10.143.2.4",
+"host":"intranet_server",
+"short":"A-Aud-Com6",
+"time_label":"privilege_escalation",
+"event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
+"raw_time":8.25
+},
+{
+"time":8,
+"name":"AMiner: New cred_disp parameter combination in Audit logs.",
+"ip":"10.143.2.4",
+"host":"intranet_server",
+"short":"A-Aud-Com2",
+"time_label":"privilege_escalation",
+"event_label":"escalated_sudo_command",
+"hierarchical_event_label":"escalated_sudo_command.0.",
+"raw_time":8.25
+}
+]

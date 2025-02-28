@@ -1,0 +1,24 @@
+[
+{
+"time":0,
+"name":"AMiner: New ip address in DNS logs.",
+"ip":"172.27.180.4",
+"host":"inet-firewall",
+"short":"A-Dns-Val1",
+"time_label":"false_positive",
+"event_label":"dnsteal",
+"hierarchical_event_label":"dnsteal.0.",
+"raw_time":0.0
+},
+{
+"time":0,
+"name":"AMiner: New ip address in DNS logs.",
+"ip":"172.27.180.4",
+"host":"inet-firewall",
+"short":"A-Dns-Val1",
+"time_label":"false_positive",
+"event_label":"dnsteal",
+"hierarchical_event_label":"dnsteal.0.",
+"raw_time":0.0
+}
+]
