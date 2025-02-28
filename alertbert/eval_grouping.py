@@ -736,7 +736,11 @@ if __name__ == "__main__":
             "mlm_1l_4h_nano_0k",
             "mlm_1l_4h_nano_1k",
             "mlm_1l_4h_nano_2k",
+            "mlm_1l_4h_o_5k",
+            "mlm_1l_4h_n_5k",
+            "mlm_1l_4h_a_5k",
         ]
+
         reports, model_param_dicts = load_reports(model_ids, path)
 
         device = get_device("cpu")
