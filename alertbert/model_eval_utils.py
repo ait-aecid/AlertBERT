@@ -314,25 +314,37 @@ def context_cluster_plot(
 
 
 if __name__ == "__main__":
-    raise NotImplementedError("This module is not meant to be executed as a script.")
 
-    # execute the following code to construct the ground truth label vocabs
+    # the following code is used to construct the ground truth label vocabs
     from alertbert.aitads import AITAlertDataset
 
-    data = AITAlertDataset(split="all", flavour="original")
-    label_vocabs = build_ground_truth_label_vocabs(data)
-
-    for k, v in label_vocabs.items():
-        if isinstance(v, Vocabulary):
-            v.save(f"saved_models/ground_truth_label_vocabs/aitads/{k}.json")
-
-    configs = ["original", "more-noise", "simultaneous-attacks"]
-    for c in configs:
-        data = AITAlertDataset(split="all", configuration=c)
+    # the following code constructs the ground truth label vocabs for the original AIT-ADS dataset
+    if False:
+        data = AITAlertDataset(split="all", flavour="original")
         label_vocabs = build_ground_truth_label_vocabs(data)
 
         for k, v in label_vocabs.items():
             if isinstance(v, Vocabulary):
-                v.save(
-                    f"saved_models/ground_truth_label_vocabs/aitads_augmented/{c}/{k}.json"
-                )
+                v.save(f"saved_models/ground_truth_label_vocabs/aitads/{k}.json")
+
+    # the following code constructs the ground truth label vocabs for the augmented AIT-ADS dataset
+    if True:
+        import os
+        import sys
+
+        configs = sys.argv[1:]
+        # configs = ["original", "more-noise", "simultaneous-attacks"]
+        for c in configs:
+            print("Loading data...")
+            data = AITAlertDataset(split="all", configuration=c)
+            print(f"Building ground truth label vocabs for {c}...")
+            label_vocabs = build_ground_truth_label_vocabs(data)
+
+            os.makedirs(
+                f"saved_models/ground_truth_label_vocabs/aitads_augmented/{c}", exist_ok=True
+            )
+            for k, v in label_vocabs.items():
+                if isinstance(v, Vocabulary):
+                    v.save(
+                        f"saved_models/ground_truth_label_vocabs/aitads_augmented/{c}/{k}.json"
+                    )

@@ -2,11 +2,9 @@
 
 A flexible and easily configured augmentation method for the [AIT Alert Dataset](https://zenodo.org/records/8263181).  
 
-So far AIT-ADS-A does not contain the raw alert data of AIT-ADS because there we would have to make sure to adapt all timestamps correctly.  
+So far AIT-ADS-A does not contain the raw alert data of AIT-ADS because there we would have to make sure to adapt all timestamps correctly and this is not yet implemented. 
 
 ## Method
-
-tbd: description of hierarchical event labels
 
 The reason why AIT-ADS-A was created is that the original AIT-ADS only features one attack at a time and a constant noise level.
 In this regime the simple TimeDelta method is quite effective at the alert grouping problem, hence data with more noise and/or simultaneous attacks were required to create and evaluate more advanced alert grouping methods.  
@@ -14,7 +12,7 @@ In order to save the effort of creating a new version of AIT-ADS, the idea was b
 
 This augmentation happens in the following way:
 In order to be able to recombine the exisitng alerts in the most flexible way while retaining all meaningful relations among them, each scenario of AIT-ADS is split into the subsequences corresponding to the different event labels (except for the case of the "dnsteal" event label, the procedure for which is detailed below), that is the full alert sequence is separated in sequences corresponding to the false alerts on the one hand and the alerts which are triggered by each step of the attack chain on the other hand.
-The different alert sequences for false positives and attacks can then be freely recombined through specification of a configuration file, to create new alert sequences which have the same underlying syntactic and semantic structure as the original AIT-ADS.
+The different alert sequences for false positives and attacks can then be freely recombined, through specification of a configuration file, to create new alert sequences which have the same underlying syntactic and semantic structure as the original AIT-ADS.
 The elementary unit of an AIT-ADS-A configuration is a day of alerts which can consist of the false alerts of several days in AIT-ADS and multiple attacks defined to take place at a certain time during this day.
 All the specified alerts of this day will then be assigned timestamps which make them appear to have happened throughout this day and the different sequences are merge-sorted by these timestamps into a single alert sequence representing this day in AIT-ADS-A.
 Similarly to AIT-ADS it is also possible in AIT-ADS-A to combine multiple such days into a continuous scenario, which is sensible e.g. if multiple days use noise or attacks from the same scenarios in AIT-ADS.
@@ -27,6 +25,7 @@ This is done for two reasons:
     1) Dynamic creation of new augmentations (e.g. at every epoch) is too slow, so the augmented dataset is assembled once when it is loaded and then it is only sampled from afterwards.
     2) Using different randomized augmentations of the data during training would simulate an infinite supply of data.
     This would not be a problem if our alert grouping method would be supervised because then it is allowed to use the true labels of the data for training data augmentation, but as our method is unsupervised we must only use the labels to create a new finite supply of data on which we then train in an unsupervised way.
+
 + The noise level of a configuration is a positive integer and it determines how many noise sequences are overlaid on each day.
 In order to simulate alert data from a single fixed-size computer network, this number should be the same for every day within a configuration of AIT-ADS-A.
 Continuous noise levels are currently impossible to implement as it is impossible to subsample a sequence of false alerts while ensuring that its structure remains consistent with a real sequence of false alerts.
@@ -35,6 +34,23 @@ This principle is the core reason why days were chosen to be the elementary unit
 + Unlike other event labels, the alerts assigned to the "dnsteal" attack receive a special preprocessing where they are split up in the three sequences "dnsteal_start", "dnsteal_active", and "dnsteal_end".
 This is done because, in contrast to the other labels, the dnsteal sequence is not closely localised in time but in most cases extends over several days and is in turn composed of common repeating patterns.
 These patterns themselves, however, all have the properties of idenpendent parts of an attack chain (closely localised in time and forming a distinctive pattern), and thus are encapsulated in the three new sub-labels "dnsteal_start", "dnsteal_active", and "dnsteal_end" which can then be independently placed in configurations of AIT-ADS-A.
+
+## Hierarchical Event Labels
+
+As AIT-ADS-A, in contrast to AIT-ADS where every attack only occurs once in a scenario, allows for the placement of multiple instances of the same attack alerts within a scenario or even within a day where they should represent different instances of the same (type of) attack, it is also necessary to be able to distinguish these different instances in the evaluation of alert grouping models.  
+For this reason, AIT-ADS-A also facilitates an augmentation of the event labels of AIT-ADS by extending them in a hierarchical manner.
+
+The hierarchical event labels consist of the following 3 levels:
+1. The original event labels from AIT-ADS.
+1. The attack stage.
+1. A unique attack identifier.
+
+The meaning of the first level is clear, it just says what general type of attack the lerrt berlongs to.
+The second level was introduced (and is currently only used by) the dnsteal alerts which, as outlined above, can be separated in three different stages which generally do not occur close in time to each other.
+The third level is a unique identifier which is assigned to every attack during the construction of the data and serves to differentiate between different instances of the same attack alerts.
+
+With these labels the goal of the alert grouping problem is to group together all alerts which have the same hierarchical event label on all three levels.
+To measure the performance of an alert grouping model on a high-level-label of the label hierarchy one calculates the respective macro score by taking the average of all the scores over the lower-level-labels contained in it.
 
 ## Data preparation
 
@@ -47,7 +63,7 @@ Lists describing the contents of each noise/attack file can be found at the end 
 To load AIT-ADS-A into a Pytorch dataset use the `AITAlertDataset` class defined in `../deep_learning/aitads.py` instantiated with the keyword arguments `flavour="augmented"` and `config` the name to a config file.  
 The config name `"original"` recreates the original AIT-ADS with the augmented dataset class (except for the small difference that dnsteal alerts of the first days are not discarded but moved to the next days).  
 
-To create a new configuration of AIT-ADS-A it is sufficient to define a config file as described below.  
+To create a new configuration of AIT-ADS-A it is sufficient to define a config file as described below and, to evaluate models on this configuration, build a ground truth vocabulary of it by running `python -m alertbert.model_eval_utils config-name`.  
 If you create a new config file, please add a short description of it to the list below.
 
 ### Config files
@@ -88,8 +104,32 @@ Recreates the original AIT-ADS with the augmented dataset class (except for the 
 #### simultaneous-attacks
 The noise, number of scenarios and days is the same as in "original", but the attacks are rearanged so that there are collisions in time of scan/scan and scan/exploit pairs.
 
-#### more-noise
-The number of scenarios, days and attacks is the same as in "original", but every day additionally contains the false alerts of another day from the same split.
+#### more-noise-1/2/6/11
+The purpose of this family of configurations is to enable the study of alert grouping under increased amounts of false alerts in the data.
+In order to do this systematically, the following design assumptions have been made:
+
++ In each configuration more-noise-x every day contains x+1 days of noise of the original configuration, that is the configuration has noise level x+1.
+
++ In order to keep the noise balanced and realistic despite the augmentation, it was tried whenever possible to 1) keep the noise alerts in their original order within scenarios, 2) let every day within a scenario have a similar distribution of noise, 3) let every noise file occur equelly often in the configuration, and 4) not have the same noise occur on different days. With increasing noise levels, however, it is not possible to completely satisfy these constraints anymore.
+Easing this burden was part of the reason for:
++ The total amount of noise alerts in each configuration is capped at around 2 million.
+While the original configuration contains about 700k noise alerts, and more-noise-1 accordingly 1.4m, in the remaining configurations it was decided to cap the total number of noise alerts because otherwise, on te one hand, the overall signal/noise ration in the data would become very low and, on the other hand, the noise would become repetitive and thus unrealistic.
+To implement this limit the number of days in the scenarios of more-noise-6 and more-noise-11 was reduced.
+An overview of the situation is provided in the table below.
++ In order to maintain comparability between the different configuratins, only the number of days per scenario was adapted, and the number of scenarios and the attacks belongign to each scenario were left the same.
+There were, however, two modifications mde to the attacks:
++ As the prpose of these configuration sis to examine the attacks under high levels of noise and the attacks in the russellmitchell scenario occur in the early morning hours where only little noise is present, they were postponed by precisely 6 hours to take place during working hours.
++ Because, due to the cap on the toal amount of noise, more-noise-11 contains only 1 day per scenario anymore, there it was necessary to move all attacks of each scenario inside this day. This only affected dnsteal alerts and their timestamos were sometimes slightly adjusted to avoid collisions and maintain their temporal order.
+In order to keep the different configurations comparable, the changes were also applied to the other configurations, that is in all more-noise-x confugurations, all attacks take place on the same day.
+
+| configuration | noise level | number of noise alerts | days per scenario
+|:-|-:|-:|-:|
+| original/simultaneous-attacks | 1 | 712.304 | [5,4,4,5,4,3,4,3]
+| more-noise-1 | 2 | 1.424.608 | [5,4,4,5,4,3,4,3]
+| more-noise-2 | 3 | 2.136.912 | [5,4,4,5,4,3,4,3]
+| more-noise-6 | 7 | 2.205.741 | [2,2,2,2,2,1,2,1]
+| more-noise-11 | 12 | 2.083.900 | [1,1,1,1,1,1,1,1]
+
 
 ## Noise files
 

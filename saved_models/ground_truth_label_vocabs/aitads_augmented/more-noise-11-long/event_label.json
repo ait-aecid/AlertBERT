@@ -1,0 +1,13 @@
+{
+    "-": 8481298,
+    "dirb": 1688945,
+    "wpscan": 54779,
+    "service_scan": 258,
+    "escalated_sudo_command": 183,
+    "attacker_change_user": 100,
+    "dnsteal": 44,
+    "webshell_cmd": 25,
+    "crack_passwords": 11,
+    "dns_scan": 9,
+    "online_cracking": 6
+}

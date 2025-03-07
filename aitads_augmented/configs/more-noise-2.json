@@ -1,0 +1,248 @@
+{
+    "name": "more-noise-2",
+    "start_time": "2025-02-10T00:00:00+01:00",
+    "train": [
+        [
+            {
+                "noise": ["shaw-1", "wilson-1", "shaw-4"],
+                "attacks": []
+            },
+            {
+                "noise": ["shaw-2", "wilson-2", "shaw-5"],
+                "attacks": []
+            },
+            {
+                "noise": ["shaw-3", "wilson-3", "shaw-1"],
+                "attacks": []
+            },
+            {
+                "noise": ["shaw-4", "wilson-4", "shaw-2"],
+                "attacks": [
+                    ["shaw-dns_scan",               "14:37:14"], 
+                    ["shaw-wpscan",                 "14:38:52"], 
+                    ["shaw-dirb",                   "14:39:14"], 
+                    ["shaw-webshell_cmd",           "14:39:56"], 
+                    ["shaw-crack_passwords",        "14:41:53"], 
+                    ["shaw-attacker_change_user",   "15:20:51"], 
+                    ["shaw-escalated_sudo_command", "15:21:02"],
+                    ["shaw-dnsteal_end",            "21:08:01"]
+                ]
+            },
+            {
+                "noise": ["shaw-5", "wilson-5", "shaw-3"],
+                "attacks": []
+            }
+        ],
+        [
+            {
+                "noise": ["wardbeck-1", "wheeler-1", "wardbeck-2"],
+                "attacks": []
+            },
+            {
+                "noise": ["wardbeck-2", "wheeler-2", "wardbeck-3"],
+                "attacks": []
+            },
+            {
+                "noise": ["wardbeck-3", "wheeler-3", "wardbeck-4"],
+                "attacks": []
+            },
+            {
+                "noise": ["wardbeck-4", "wheeler-4", "wardbeck-1"],
+                "attacks": [
+                    ["wardbeck-dnsteal_start",          "00:00:05"],
+                    ["wardbeck-service_scan",           "12:11:12"], 
+                    ["wardbeck-wpscan",                 "12:11:29"], 
+                    ["wardbeck-dirb",                   "12:11:49"], 
+                    ["wardbeck-webshell_cmd",           "12:12:36"], 
+                    ["wardbeck-crack_passwords",        "12:15:04"], 
+                    ["wardbeck-attacker_change_user",   "12:55:01"], 
+                    ["wardbeck-escalated_sudo_command", "12:55:14"],
+                    ["wardbeck-dnsteal_end",            "22:12:28"]
+                ]
+            }
+        ],
+        [
+            {
+                "noise": ["wheeler-1", "wardbeck-3", "wheeler-4"],
+                "attacks": []
+            },
+            {
+                "noise": ["wheeler-2", "wardbeck-4", "wheeler-1"],
+                "attacks": []
+            },
+            {
+                "noise": ["wheeler-3", "wardbeck-1", "wheeler-2"],
+                "attacks": []
+            },
+            {
+                "noise": ["wheeler-4", "wardbeck-2", "wheeler-3"],
+                "attacks": [
+                    ["wheeler-dnsteal_start",          "00:00:07"], 
+                    ["wheeler-dnsteal_active",         "05:42:02"], 
+                    ["wheeler-dnsteal_active",         "05:53:54"],
+                    ["wheeler-dnsteal_active",         "06:00:01"],
+                    ["wheeler-dnsteal_end",            "06:27:25"],
+                    ["wheeler-service_scan",           "07:39:15"], 
+                    ["wheeler-dirb",                   "07:39:29"], 
+                    ["wheeler-wpscan",                 "07:56:07"], 
+                    ["wheeler-webshell_cmd",           "07:56:52"], 
+                    ["wheeler-attacker_change_user",   "17:51:52"], 
+                    ["wheeler-escalated_sudo_command", "17:52:07"]
+                ]
+            }
+        ],
+        [
+            {
+                "noise": ["wilson-1", "shaw-3", "wilson-4"],
+                "attacks": []
+            },
+            {
+                "noise": ["wilson-2", "shaw-4", "wilson-5"],
+                "attacks": []
+            },
+            {
+                "noise": ["wilson-3", "shaw-5", "wilson-1"],
+                "attacks": []
+            },
+            {
+                "noise": ["wilson-4", "shaw-1", "wilson-2"],
+                "attacks": [
+                    ["wilson-dnsteal_start",          "00:00:04"], 
+                    ["wilson-dnsteal_active",         "02:59:50"],
+                    ["wilson-dnsteal_active",         "05:46:37"], 
+                    ["wilson-dnsteal_active",         "05:59:56"], 
+                    ["wilson-service_scan",           "10:59:26"], 
+                    ["wilson-dirb",                   "10:59:44"], 
+                    ["wilson-wpscan",                 "11:19:56"], 
+                    ["wilson-webshell_cmd",           "11:20:37"], 
+                    ["wilson-crack_passwords",        "11:29:49"], 
+                    ["wilson-attacker_change_user",   "11:48:18"], 
+                    ["wilson-escalated_sudo_command", "11:48:32"],
+                    ["wilson-dnsteal_active",         "12:00:00"],
+                    ["wilson-dnsteal_end",            "17:47:16"]
+                ]
+            },
+            {
+                "noise": ["wilson-5", "shaw-2", "wilson-3"],
+                "attacks": []
+            }
+        ]
+    ],
+    "val": [
+        [
+            {
+                "noise": ["harrison-1", "santos-1", "harrison-3"],
+                "attacks": []
+            },
+            {
+                "noise": ["harrison-2", "santos-2", "harrison-4"],
+                "attacks": []
+            },
+            {
+                "noise": ["harrison-3", "santos-3", "santos-1"],
+                "attacks": []
+            },
+            {
+                "noise": ["harrison-4", "harrison-1", "santos-2"],
+                "attacks": [
+                    ["harrison-dnsteal_start",          "00:00:07"], 
+                    ["harrison-service_scan",           "07:16:31"], 
+                    ["harrison-wpscan",                 "07:28:41"], 
+                    ["harrison-dirb",                   "07:29:41"], 
+                    ["harrison-webshell_cmd",           "07:56:31"], 
+                    ["harrison-crack_passwords",        "07:58:16"], 
+                    ["harrison-dnsteal_active",         "08:00:05"], 
+                    ["harrison-attacker_change_user",   "08:36:38"], 
+                    ["harrison-escalated_sudo_command", "08:36:54"], 
+                    ["harrison-dnsteal_active",         "11:59:55"],
+                    ["harrison-dnsteal_active",         "18:00:03"],
+                    ["harrison-dnsteal_end",            "19:15:00"]
+                ]
+            }
+        ],
+        [
+            {
+                "noise": ["santos-1", "harrison-2", "santos-3"],
+                "attacks": []
+            },
+            {
+                "noise": ["santos-2", "harrison-3", "harrison-1"],
+                "attacks": []
+            },
+            {
+                "noise": ["santos-3", "harrison-4", "harrison-2"],
+                "attacks": [
+                    ["santos-dnsteal_start",          "00:00:09"],
+                    ["santos-dnsteal_end",            "07:16:18"],
+                    ["santos-service_scan",           "11:21:43"], 
+                    ["santos-dirb",                   "11:22:02"], 
+                    ["santos-wpscan",                 "11:22:23"], 
+                    ["santos-webshell_cmd",           "11:24:14"], 
+                    ["santos-online_cracking",        "11:24:39"], 
+                    ["santos-crack_passwords",        "11:25:43"], 
+                    ["santos-attacker_change_user",   "11:58:17"], 
+                    ["santos-escalated_sudo_command", "11:58:27"]
+                ]
+            }
+        ]
+    ],
+    "test": [
+        [
+            {
+                "noise": ["fox-1", "russellmitchell-1", "fox-3"],
+                "attacks": []
+            },
+            {
+                "noise": ["fox-2", "russellmitchell-2", "fox-4"],
+                "attacks": []
+            },
+            {
+                "noise": ["fox-3", "russellmitchell-3", "russellmitchell-1"],
+                "attacks": [
+                    ["fox-dnsteal_start",          "00:00:03"], 
+                    ["fox-dnsteal_active",         "08:54:01"], 
+                    ["fox-dnsteal_active",         "09:49:07"],
+                    ["fox-dnsteal_end",            "10:04:47"],
+                    ["fox-service_scan",           "12:17:26"], 
+                    ["fox-wpscan",                 "12:17:50"], 
+                    ["fox-dirb",                   "12:18:30"], 
+                    ["fox-webshell_cmd",           "12:38:25"], 
+                    ["fox-online_cracking",        "12:39:06"], 
+                    ["fox-crack_passwords",        "12:59:54"], 
+                    ["fox-attacker_change_user",   "13:14:31"], 
+                    ["fox-escalated_sudo_command", "13:14:41"]
+                ]
+            },
+            {
+                "noise": ["fox-4", "fox-1", "russellmitchell-2"],
+                "attacks": []
+            }
+        ],
+        [
+            {
+                "noise": ["russellmitchell-1", "fox-2", "russellmitchell-3"],
+                "attacks": []
+            },
+            {
+                "noise": ["russellmitchell-2", "fox-3", "fox-1"],
+                "attacks": []
+            },
+            {
+                "noise": ["russellmitchell-3", "fox-4", "fox-2"],
+                "attacks": [
+                    ["russellmitchell-dnsteal_start",          "00:00:09"], 
+                    ["russellmitchell-dnsteal_active",         "06:56:57"],
+                    ["russellmitchell-dnsteal_active",         "08:00:05"],
+                    ["russellmitchell-service_scan",           "09:56:58"], 
+                    ["russellmitchell-dirb",                   "09:57:26"], 
+                    ["russellmitchell-wpscan",                 "09:57:52"], 
+                    ["russellmitchell-webshell_cmd",           "09:59:14"], 
+                    ["russellmitchell-crack_passwords",        "10:01:07"], 
+                    ["russellmitchell-attacker_change_user",   "10:37:40"], 
+                    ["russellmitchell-escalated_sudo_command", "10:37:58"], 
+                    ["russellmitchell-dnsteal_end",            "13:50:39"]
+                ]
+            }
+        ]
+    ]
+}

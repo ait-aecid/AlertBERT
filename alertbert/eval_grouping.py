@@ -674,7 +674,7 @@ if __name__ == "__main__":
 
     path = "saved_models"
     n_jobs = 8
-    aitads_a_config = "original"
+    aitads_a_config = "more-noise-11"
 
     log_to_stdout()
     logging.info("Loading data...")
@@ -683,7 +683,7 @@ if __name__ == "__main__":
     label_vocabs = load_ground_truth_label_vocabs(path, aitads_a_config)
 
     # execute the following block of code to compute results for MLM based models
-    if True:
+    if False:
         logging.info("Evaluating MLMs...")
         from sklearn.cluster import DBSCAN
         from sklearn.decomposition import KernelPCA
@@ -834,7 +834,7 @@ if __name__ == "__main__":
             )
 
     # execute the following block of code to compute results for time delta models
-    if False:
+    if True:
         logging.info("Evaluating TimeDelta models...")
 
         # define parameters
