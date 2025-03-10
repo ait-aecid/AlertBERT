@@ -112,11 +112,11 @@ In order to do this systematically, the following design assumptions have been m
 
 + In order to keep the noise balanced and realistic despite the augmentation, it was tried whenever possible to 1) keep the noise alerts in their original order within scenarios, 2) let every day within a scenario have a similar distribution of noise, 3) let every noise file occur equelly often in the configuration, and 4) not have the same noise occur on different days. With increasing noise levels, however, it is not possible to completely satisfy these constraints anymore.
 Easing this burden was part of the reason for:
-+ The total amount of noise alerts in each configuration is capped at around 2 million.
++ The total amount of noise alerts in each configuration is capped at around 2.1 million.
 While the original configuration contains about 700k noise alerts, and more-noise-1 accordingly 1.4m, in the remaining configurations it was decided to cap the total number of noise alerts because otherwise, on te one hand, the overall signal/noise ration in the data would become very low and, on the other hand, the noise would become repetitive and thus unrealistic.
 To implement this limit the number of days in the scenarios of more-noise-6 and more-noise-11 was reduced.
 An overview of the situation is provided in the table below.
-+ In order to maintain comparability between the different configuratins, only the number of days per scenario was adapted, and the number of scenarios and the attacks belongign to each scenario were left the same.
++ In order to maintain comparability between the different configuratins, only the number of days per scenario was adapted, and the number of scenarios and the attacks belonging to each scenario were left the same.
 There were, however, two modifications mde to the attacks:
 + As the prpose of these configuration sis to examine the attacks under high levels of noise and the attacks in the russellmitchell scenario occur in the early morning hours where only little noise is present, they were postponed by precisely 6 hours to take place during working hours.
 + Because, due to the cap on the toal amount of noise, more-noise-11 contains only 1 day per scenario anymore, there it was necessary to move all attacks of each scenario inside this day. This only affected dnsteal alerts and their timestamos were sometimes slightly adjusted to avoid collisions and maintain their temporal order.
