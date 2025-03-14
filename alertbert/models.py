@@ -5,13 +5,16 @@ from typing import Any, Literal
 
 import numpy as np
 import torch
+from scipy.sparse import coo_array
 from sklearn.base import BaseEstimator
+from sklearn.cluster import DBSCAN
 from sklearn.metrics.pairwise import cosine_distances, euclidean_distances
 from tensordict import TensorDict
 from tensordict.nn import TensorDictModule
 from torch import nn
 
-from alertbert.preprocessing import Vocabulary
+from alertbert.aitads import AlertDataset
+from alertbert.preprocessing import BaseSequenceCollate, Vocabulary
 
 """This module contains classes defining masked language models and utilities for their 
 use implemented in PyTorch."""
@@ -531,9 +534,7 @@ class MaskedLangModelInferenceWrapper(TensorDictModule):
     ) -> None:
         super().__init__(
             nn.Sequential(OrderedDict({layer: model[layer] for layer in layers})),
-            in_keys={
-                f: f for f in model["embedding"].features + [model.encoding]
-            },
+            in_keys={f: f for f in model["embedding"].features + [model.encoding]},
             out_keys=["output"],
         )
         self.encoding = model.encoding
@@ -646,7 +647,7 @@ class MaskedLangModelTrainWrapper(MaskedLangModelEvalWrapper):
         return batch
 
 
-# token clustering model
+# token clustering models
 
 
 class AbstractClusteringModel:
@@ -691,7 +692,6 @@ class BaselineClusteringModel(AbstractClusteringModel):
     """
 
     def __init__(self, features: list[str]) -> None:
-        super().__init__()
         self.features = features
 
     def _reverse_enumerate(self, iterable: Iterable[Any]) -> Iterable[tuple[Any, int]]:
@@ -743,7 +743,6 @@ class TokenClusteringModel(AbstractClusteringModel):
         precomputed_metric: callable = None,
         add_time_dim: bool = True,
     ) -> None:
-        super().__init__()
         self.model = model
         self.dim_reduction = dim_reduction
         self.clustering = clustering
@@ -803,20 +802,23 @@ class TokenClusteringModel(AbstractClusteringModel):
 
 
 class CombinedTimeCosineMetric:
-    """A distance metric that is defined as the maximum of the cosine distance between the first n-1 dimensions and the euclidean distance in the last dimension of the input vectors.
+    """A distance metric that is defined as the maximum of the cosine distance between the first n-1 dimensions and
+        the euclidean distance in the last dimension of the input vectors.
 
     Args:
-        theta (float, optional): A scaling factor for the cosine distance, opposing vectors will have the cosine distance theta. Defaults to 2.0.
+        theta (float, optional): A scaling factor for the cosine distance, opposing vectors will have
+            the cosine distance 2 * theta. Defaults to 1.
     """
 
-    def __init__(self, theta: float = 2.0) -> None:
-        self.theta = theta / 2
+    def __init__(self, theta: float = 1.0) -> None:
+        self.theta = theta
 
     def __call__(self, x: np.ndarray, y: np.ndarray = None) -> np.ndarray:
         if y is None:
             y = x
         if x.ndim == 1:
             x = x.unsequeze(0)
+        if y.ndim == 1:
             y = y.unsequeze(0)
         return np.maximum(
             cosine_distances(x[:, :-1], y[:, :-1]) * self.theta,
@@ -840,7 +842,6 @@ class TimeDeltaClusteringModel(AbstractClusteringModel):
     """
 
     def __init__(self, delta: float = 2.0) -> None:
-        super().__init__()
         self.delta = delta
 
     def forward(
@@ -852,3 +853,129 @@ class TimeDeltaClusteringModel(AbstractClusteringModel):
         cluster = np.cumsum(cluster)
         batch["cluster"] = torch.tensor(cluster).unsqueeze(0).to(batch.device)
         return batch
+
+
+# whole dataset clustering models
+
+
+class AbstractDatasetGroupingModel:
+    """An abstract class for applying alert grouping models to AlertDatasets.
+
+    Methods:
+        forward(data: AlertDataset) -> np.ndarray:
+            If implemented, groups the dataset based on the underlying model.
+    """
+
+    def __call__(self, data: AlertDataset) -> np.ndarray:
+        return self.forward(data)
+
+    def forward(self, data: AlertDataset) -> np.ndarray:
+        """If implemented, embeds the dataset based on its attributes."""
+        raise NotImplementedError("forward method must be implemented in subclass!")
+
+
+class TimeDelta(AbstractDatasetGroupingModel):
+    def __init__(self, delta: float = 2.0) -> None:
+        self.delta = delta
+
+    def forward(self, data: AlertDataset) -> np.ndarray:
+        c = data.data["raw_time"]
+        c = np.diff(c, prepend=0)
+        c = np.where(c >= self.delta, 1, 0)
+        return np.cumsum(c)
+
+
+class AlertBERT(AbstractDatasetGroupingModel):
+    def __init__(
+        self,
+        model: MaskedLangModelInferenceWrapper,
+        collate_fn: BaseSequenceCollate,
+        dim_reduction: BaseEstimator,
+        delta: float = 2.0,
+        theta: float = 1.0,
+        padding: int = 1024,
+        readout: int = 2048,
+    ) -> None:
+        super().__init__()
+        self.model = model
+        self.collate_fn = collate_fn
+        self.dim_reduction = dim_reduction
+        self.delta = delta
+        self.theta = theta
+        self.padding = padding
+        self.readout = readout
+        self.timedelta = TimeDelta(delta=delta)
+        self.clustering = DBSCAN(eps=delta, metric="precomputed")
+        self.precomputed_metric = CombinedTimeCosineMetric(theta=theta)
+
+    def forward(self, data: AlertDataset) -> np.ndarray:
+        # get embeddings of full dataset
+        # if necessary, dont compute all emebddings here ta once, but do it on demand during the distance computation
+        embeddings = self.get_embeddings(data)
+
+        # compute pre clustering
+        pre_clustering = self.timedelta(data)
+
+        # build sparse distance matrix based on pre-clustering
+        distances = []
+        x_coords = []
+        y_coords = []
+
+        for pre_cluster in range(pre_clustering[-1] + 1):
+            # TODO: check if this is correct
+            mask = pre_clustering == pre_cluster
+            if mask.sum() == 0:
+                continue
+            x_coords.extend(np.where(mask)[0])
+            y_coords.extend(np.where(mask)[0])
+            distances.extend(self.precomputed_metric(embeddings[mask]))
+
+        distances = coo_array(
+            distances, (x_coords, y_coords), shape=(len(data), len(data))
+        ).tocsr()
+
+        # apply clustering
+        return self.clustering.fit_predict(distances)
+
+    def get_embeddings(
+        self, data: AlertDataset, apply_dim_red: bool = True, add_time: bool = True
+    ) -> np.ndarray:
+        num_contexts = len(data) // self.readout
+        remainder = len(data) % self.readout
+        embeddings = []
+
+        for i in range(num_contexts):
+            batch = self.collate_fn(
+                [
+                    data[
+                        i * self.readout - self.padding : (i + 1) * self.readout
+                        + self.padding
+                    ]
+                ]
+            )
+            batch = self.model(batch)
+            embeddings.append(
+                batch["output"][0, self.padding : -self.padding].cpu().numpy()
+            )
+
+        if remainder:
+            batch = self.collate_fn(
+                [data[-remainder - self.padding : len(data) + self.padding]]
+            )
+            batch = self.model(batch)
+            embeddings.append(
+                batch["output"][0, self.padding : -self.padding].cpu().numpy()
+            )
+        embeddings = np.concatenate(embeddings)
+
+        # apply dimensionality reduction
+        if apply_dim_red and self.dim_reduction:
+            embeddings = self.dim_reduction.fit_transform(embeddings)
+
+        # add time dimension, do we need this?
+        if add_time:
+            embeddings = np.concatenate(
+                (embeddings, data.data["raw_time"].reshape(-1, 1)), axis=1
+            )
+
+        return embeddings

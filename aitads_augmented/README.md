@@ -2,7 +2,8 @@
 
 A flexible and easily configured augmentation method for the [AIT Alert Dataset](https://zenodo.org/records/8263181).  
 
-So far AIT-ADS-A does not contain the raw alert data of AIT-ADS because there we would have to make sure to adapt all timestamps correctly and this is not yet implemented. 
+So far AIT-ADS-A does not contain the raw alert data of AIT-ADS because there we would have to make sure to adapt all timestamps correctly and this is not yet implemented.
+Also the handling of IP addresses in the case of mixing alerts of differetn originas is an open problem. 
 
 ## Method
 
@@ -105,22 +106,22 @@ Recreates the original AIT-ADS with the augmented dataset class (except for the 
 The noise, number of scenarios and days is the same as in "original", but the attacks are rearanged so that there are collisions in time of scan/scan and scan/exploit pairs.
 
 #### more-noise-1/2/6/11
-The purpose of this family of configurations is to enable the study of alert grouping under increased amounts of false alerts in the data.
-In order to do this systematically, the following design assumptions have been made:
+The purpose of this family of configurations is to enable the study of alert grouping under increased densities of false alerts in the data.
+In order to do this systematically, the following design decisions have been made:
 
 + In each configuration more-noise-x every day contains x+1 days of noise of the original configuration, that is the configuration has noise level x+1.
 
 + In order to keep the noise balanced and realistic despite the augmentation, it was tried whenever possible to 1) keep the noise alerts in their original order within scenarios, 2) let every day within a scenario have a similar distribution of noise, 3) let every noise file occur equelly often in the configuration, and 4) not have the same noise occur on different days. With increasing noise levels, however, it is not possible to completely satisfy these constraints anymore.
 Easing this burden was part of the reason for:
 + The total amount of noise alerts in each configuration is capped at around 2.1 million.
-While the original configuration contains about 700k noise alerts, and more-noise-1 accordingly 1.4m, in the remaining configurations it was decided to cap the total number of noise alerts because otherwise, on te one hand, the overall signal/noise ration in the data would become very low and, on the other hand, the noise would become repetitive and thus unrealistic.
+While the original configuration contains about 700k noise alerts, and more-noise-1 accordingly 1.4m, in the remaining configurations it was decided to cap the total number of noise alerts because otherwise, on the one hand, the overall signal/noise ratio in the data would become very low and, on the other hand, the noise would become repetitive and thus unrealistic.
 To implement this limit the number of days in the scenarios of more-noise-6 and more-noise-11 was reduced.
 An overview of the situation is provided in the table below.
-+ In order to maintain comparability between the different configuratins, only the number of days per scenario was adapted, and the number of scenarios and the attacks belonging to each scenario were left the same.
-There were, however, two modifications mde to the attacks:
-+ As the prpose of these configuration sis to examine the attacks under high levels of noise and the attacks in the russellmitchell scenario occur in the early morning hours where only little noise is present, they were postponed by precisely 6 hours to take place during working hours.
++ In order to maintain comparability between the different configurations, only the number of days per scenario was adapted, and the number of scenarios and the attacks belonging to each scenario were left the same.
+There were, however, two modifications made to the attacks:
++ As the purpose of these configurations is to examine the attacks under high levels of noise and the attacks in the russellmitchell scenario occur in the early morning hours where only little noise is present, they were postponed by precisely 6 hours to take place during working hours.
 + Because, due to the cap on the toal amount of noise, more-noise-11 contains only 1 day per scenario anymore, there it was necessary to move all attacks of each scenario inside this day. This only affected dnsteal alerts and their timestamos were sometimes slightly adjusted to avoid collisions and maintain their temporal order.
-In order to keep the different configurations comparable, the changes were also applied to the other configurations, that is in all more-noise-x confugurations, all attacks take place on the same day.
+In order to keep the different configurations comparable, the same changes were also applied to the other configurations, that is in all more-noise-x confugurations, all attacks take place on the same day.
 
 | configuration | noise level | number of noise alerts | days per scenario
 |:-|-:|-:|-:|
