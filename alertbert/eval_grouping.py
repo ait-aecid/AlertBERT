@@ -5,7 +5,6 @@ from typing import Literal
 
 import matplotlib.pyplot as plt
 import numpy as np
-import torch
 from scipy.sparse import coo_matrix
 
 from alertbert.aitads import MultiAlertDataset
@@ -13,7 +12,7 @@ from alertbert.models import (
     AbstractDatasetGroupingModel,
     MaskedLangModelInferenceWrapper,
 )
-from alertbert.preprocessing import BaseSequenceCollate, Vocabulary
+from alertbert.preprocessing import Vocabulary
 
 """This module contains functions for evaluating alert grouping models.
 If executed as a script, it will load a trained model and evaluate it on the training and validation sets of the specified augmentation of the AIT Alert dataset.
@@ -114,6 +113,7 @@ def eval_alert_grouping(
         dict[str, dict | np.ndarray]: A dictionary containing evaluation metrics for each label,
             macro metrics and batch statistics.
     """
+    # TODO: Update docstring
 
     assert target.startswith("hierarchical"), (
         "Non-hierarchical labels have been deprecated in this function."
@@ -300,7 +300,6 @@ def eval_alert_grouping(
 
     return results
 
-# TODO: Up to here everything is done.
 
 # result saving and loading functions
 
@@ -354,6 +353,7 @@ def get_metrics(exclude_raw_metrics: bool = True) -> list[str]:
     return metrics[1:]
 
 
+# TODO: Decide whether to keep the scatter plot functions or not.
 def get_scatter_plot_figure(
     used_metrics: list[str], x_label: str = None, y_label: str = None
 ) -> tuple[plt.Figure, plt.Axes]:
@@ -378,8 +378,7 @@ def get_scatter_plot_figure(
             ax.set_ylabel(y_label if y_label else m)
             if m in get_metrics(True):
                 ax.set_ylim((-0.05 if m != "mcc" else -1.05), 1.05)
-                if x_label not in batch_stats:
-                    ax.set_xlim((-0.05 if m != "mcc" else -1.05), 1.05)
+                ax.set_xlim((-0.05 if m != "mcc" else -1.05), 1.05)
 
     return fig, all_axs
 
@@ -389,7 +388,6 @@ def grouping_results_v_discriminator_plot(
     val_results: dict[str, dict | np.ndarray],
     target_vocab: Vocabulary,
     disc: str = "context_entropy",
-    macro_colour: str = "context_entropy",
     exclude_raw_metrics: bool = True,
     excluded_label: str = "-",
 ) -> None:
@@ -435,7 +433,7 @@ def grouping_results_v_discriminator_plot(
             else:
                 x_vals = d
                 y_vals = results["macro"][m]
-                c_vals = results["batch_stats"][macro_colour]
+                c_vals = None  # results["batch_stats"][macro_colour]
             ax.scatter(
                 x=x_vals, y=y_vals, c=c_vals, s=20.0, alpha=0.3, edgecolors="none"
             )
@@ -450,7 +448,6 @@ def model_comparison_plot(
     train_results_y: dict[str, dict | np.ndarray],
     val_results_y: dict[str, dict | np.ndarray],
     target_vocab: Vocabulary,
-    macro_colour: str = "context_entropy",
     exclude_raw_metrics: bool = True,
     excluded_label: str = "-",
 ) -> None:
@@ -506,7 +503,7 @@ def model_comparison_plot(
             else:
                 x_vals = results_x["macro"][m]
                 y_vals = results_y["macro"][m]
-                c_vals = results_x["batch_stats"][macro_colour]
+                c_vals = None  # results_x["batch_stats"][macro_colour]
             ax.scatter(
                 x=x_vals, y=y_vals, c=c_vals, s=20.0, alpha=0.3, edgecolors="none"
             )
@@ -606,14 +603,14 @@ def pprint_eval_diff(
 if __name__ == "__main__":
     import logging
 
-    from alertbert.aitads import AITAlertDataset, AlertSequenceBatchSampler
+    from alertbert.aitads import AITAlertDataset
     from alertbert.model_eval_utils import (
         load_data_tools,
         load_ground_truth_label_vocabs,
         load_models,
         load_reports,
     )
-    from alertbert.models import CombinedTimeCosineMetric, TokenClusteringModel
+    from alertbert.models import AlertBERT, TimeDelta
     from alertbert.utils import get_device, log_to_stdout
 
     path = "saved_models"
@@ -629,42 +626,27 @@ if __name__ == "__main__":
     # execute the following block of code to compute results for MLM based models
     if True:
         logging.info("Evaluating MLMs...")
-        from sklearn.cluster import DBSCAN
         from sklearn.decomposition import KernelPCA
 
         # define dim reduction and clustering parameters
-        cl_model_params = {
+        grouping_model_params = {
             "model": {
                 "id": None,  # to be left blank here
                 "layers": ["embedding", "encoder"],
+                "theta": 1.0,
+                "delta": 2.0,
             },
             "dim_reduction": {
-                "name": "KernelPCA",
+                "name": "KernelPCA3",
                 "model_args": {
                     "n_components": 3,
                     "kernel": "cosine",
                 },
             },
-            "clustering": {
-                "name": "DBSCAN",
-                "model_args": {
-                    "min_samples": 1,
-                    "eps": 2.0,
-                    "metric": "precomputed",
-                },
-            },
-            "metric": {
-                "name": "CombinedTimeCosineMetric",
-                "model_args": {
-                    "theta": 40.0,
-                },
-            },
             "data_split": None,  # to be left blank here
         }
 
-        dim_reduction = KernelPCA(**cl_model_params["dim_reduction"]["model_args"])
-        clustering = DBSCAN(**cl_model_params["clustering"]["model_args"])
-        metric = CombinedTimeCosineMetric(**cl_model_params["metric"]["model_args"])
+        dim_reduction = KernelPCA(**grouping_model_params["dim_reduction"]["model_args"])
 
         # models to be used
         model_ids = [
@@ -700,81 +682,51 @@ if __name__ == "__main__":
         for key, model in models.items():
             logging.info(f"Evaluating model {key} ...")
 
-            assert model_param_dicts[key]["context_size"] == 4096, (
-                "Context size must be 4096 for evaluation to be the same across models."
-            )
-
-            # set up data loaders
-            train_sampler = AlertSequenceBatchSampler(
-                train_data,
-                context_size=model_param_dicts[key]["context_size"],
-                batch_size=1,
-                drop_last=False,
-                generator=torch.Generator().manual_seed(eval_seed),
-            )
-            val_sampler = AlertSequenceBatchSampler(
-                val_data,
-                context_size=model_param_dicts[key]["context_size"],
-                batch_size=1,
-                drop_last=False,
-                generator=torch.Generator().manual_seed(eval_seed),
-            )
-
-            train_loader = DataLoader(
-                train_data,
-                batch_sampler=train_sampler,
-                collate_fn=data_tools[key]["inf_coll_fn"],
-            )
-            val_loader = DataLoader(
-                val_data,
-                batch_sampler=val_sampler,
-                collate_fn=data_tools[key]["inf_coll_fn"],
-            )
-
             # set up model
-            cl_model = TokenClusteringModel(
+            grouping_model = AlertBERT(
                 model=MaskedLangModelInferenceWrapper(
-                    model, cl_model_params["model"]["layers"]
+                    model, grouping_model_params["model"]["layers"]
                 ),
+                collate_fn=data_tools[key]["collate_fn"],
                 dim_reduction=dim_reduction,
-                clustering=clustering,
-                precomputed_metric=metric,
+                delta=grouping_model_params["model"]["delta"],
+                theta=grouping_model_params["model"]["theta"],
             )
 
             # evaluate model
             train_stats = eval_alert_grouping(
-                model=cl_model,
-                loader=train_loader,
+                model=grouping_model,
                 target_vocab=label_vocabs["hierarchical_event_label"],
+                data=train_data,
                 n_jobs=n_jobs,
             )
             val_stats = eval_alert_grouping(
-                model=cl_model,
-                loader=val_loader,
+                model=grouping_model,
                 target_vocab=label_vocabs["hierarchical_event_label"],
+                data=val_data,
                 n_jobs=n_jobs,
             )
 
             # add model params to results and save results
-            # ATTENTION: The cl_model_params dict is modified in place, so the order of operations is important
-            cl_model_params["model"]["id"] = key
+            # ATTENTION: The grouping_model_params dict is modified in place, so the order of operations is important
+            grouping_model_params["model"]["id"] = key
 
-            train_stats["model_params"] = cl_model_params
+            train_stats["model_params"] = grouping_model_params
             train_stats["model_params"]["data_split"] = "train"
             save_results(
                 train_stats,
                 path,
                 train_stats["model_params"]["dim_reduction"]["name"]
-                + f"_theta_{cl_model_params['metric']['model_args']['theta']:d}_{aitads_a_config}",
+                + f"_theta_{grouping_model_params['model']['theta']:d}_delta_{grouping_model_params['model']['delta']:d}_{aitads_a_config}",
             )
 
-            val_stats["model_params"] = cl_model_params
+            val_stats["model_params"] = grouping_model_params
             val_stats["model_params"]["data_split"] = "val"
             save_results(
                 val_stats,
                 path,
                 val_stats["model_params"]["dim_reduction"]["name"]
-                + f"_theta_{cl_model_params['metric']['model_args']['theta']:d}_{aitads_a_config}",
+                + f"_theta_{grouping_model_params['model']['theta']:d}_delta_{grouping_model_params['model']['delta']:d}_{aitads_a_config}",
             )
 
     # execute the following block of code to compute results for time delta models
@@ -782,13 +734,12 @@ if __name__ == "__main__":
         logging.info("Evaluating TimeDelta models...")
 
         # define parameters
-        cl_model_params = {
+        grouping_model_params = {
             "model": {
                 "id": "timedelta",
                 "delta": None,  # to be left blank here
             },
             "data_split": None,  # to be left blank here
-            "context_size": 4096, # Do not change this value! It must be the same for all models so that the evaluation is comparable.
         }
 
         # deltas to be used
@@ -799,60 +750,32 @@ if __name__ == "__main__":
         for delta in deltas:
             logging.info(f"Evaluating delta = {delta} ...")
 
-            # set up data loaders
-            train_sampler = AlertSequenceBatchSampler(
-                train_data,
-                context_size=cl_model_params["context_size"],
-                batch_size=1,
-                drop_last=False,
-                generator=torch.Generator().manual_seed(eval_seed),
-            )
-            val_sampler = AlertSequenceBatchSampler(
-                val_data,
-                context_size=cl_model_params["context_size"],
-                batch_size=1,
-                drop_last=False,
-                generator=torch.Generator().manual_seed(eval_seed),
-            )
-
-            coll_fn = BaseSequenceCollate(label_vocabs)
-            train_loader = DataLoader(
-                train_data,
-                batch_sampler=train_sampler,
-                collate_fn=coll_fn,
-            )
-            val_loader = DataLoader(
-                val_data,
-                batch_sampler=val_sampler,
-                collate_fn=coll_fn,
-            )
-
             # set up model
-            cl_model = TimeDeltaClusteringModel(delta=delta)
+            grouping_model = TimeDelta(delta=delta)
 
             # evaluate model
             train_stats = eval_alert_grouping(
-                model=cl_model,
-                loader=train_loader,
+                model=grouping_model,
                 target_vocab=label_vocabs["hierarchical_event_label"],
+                data=train_data,
                 n_jobs=n_jobs,
             )
             val_stats = eval_alert_grouping(
-                model=cl_model,
-                loader=val_loader,
+                model=grouping_model,
                 target_vocab=label_vocabs["hierarchical_event_label"],
+                data=val_data,
                 n_jobs=n_jobs,
             )
 
             # add model params to results and save results
             # ATTENTION: The cl_model_params dict is modified in place, so the order of operations is important
-            cl_model_params["model"]["delta"] = delta
+            grouping_model_params["model"]["delta"] = delta
 
-            train_stats["model_params"] = cl_model_params
+            train_stats["model_params"] = grouping_model_params
             train_stats["model_params"]["data_split"] = "train"
             save_results(train_stats, path, f"timedelta_{delta}_{aitads_a_config}")
 
-            val_stats["model_params"] = cl_model_params
+            val_stats["model_params"] = grouping_model_params
             val_stats["model_params"]["data_split"] = "val"
             save_results(val_stats, path, f"timedelta_{delta}_{aitads_a_config}")
 

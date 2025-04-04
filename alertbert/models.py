@@ -725,7 +725,8 @@ class TokenClusteringModel(AbstractClusteringModel):
         model (MaskedLangModelInferenceWrapper): The masked language model to be used.
         dim_reduction (BaseEstimator, optional): A dimensionality reduction module supporting the sklearn API.
         clustering (BaseEstimator): A clustering module supporting the sklearn API.
-        precomputed_metric (callable, optional): A callable that computes the distance matrix to be used for clustering. In this case, the clustering module must be set to the "precomputed" metric.
+        precomputed_metric (callable, optional): A callable that computes the distance matrix to be used for clustering.
+            In this case, the clustering module must be set to the "precomputed" metric.
         add_time_dim (bool, optional): Whether to add the time dimension to the input for clustering. Defaults to True.
 
     Methods:
@@ -856,6 +857,7 @@ class TimeDeltaClusteringModel(AbstractClusteringModel):
 
 
 # whole dataset clustering models
+# TODO: add docstrings
 
 
 class AbstractDatasetGroupingModel:
@@ -890,7 +892,7 @@ class AlertBERT(AbstractDatasetGroupingModel):
         self,
         model: MaskedLangModelInferenceWrapper,
         collate_fn: BaseSequenceCollate,
-        dim_reduction: BaseEstimator,
+        dim_reduction: BaseEstimator = None,
         delta: float = 2.0,
         theta: float = 1.0,
         padding: int = 1024,
@@ -905,8 +907,8 @@ class AlertBERT(AbstractDatasetGroupingModel):
         self.padding = padding
         self.readout = readout
         self.timedelta = TimeDelta(delta=delta)
-        self.clustering = DBSCAN(eps=delta, metric="precomputed")
-        self.precomputed_metric = CombinedTimeCosineMetric(theta=theta)
+        self.clustering = DBSCAN(eps=delta, metric="precomputed", min_samples=1)
+        self.metric = CombinedTimeCosineMetric(theta=theta)
 
     def forward(self, data: AlertDataset) -> np.ndarray:
         # get embeddings of full dataset
@@ -918,20 +920,104 @@ class AlertBERT(AbstractDatasetGroupingModel):
 
         # build sparse distance matrix based on pre-clustering
         distances = []
-        x_coords = []
-        y_coords = []
+        coords_0 = []
+        coords_1 = []
+
+        # this keeps track of how many alerts were in the previous pre-clusters
+        alert_idx_offset = 0
 
         for pre_cluster in range(pre_clustering[-1] + 1):
-            # TODO: check if this is correct
-            mask = pre_clustering == pre_cluster
-            if mask.sum() == 0:
-                continue
-            x_coords.extend(np.where(mask)[0])
-            y_coords.extend(np.where(mask)[0])
-            distances.extend(self.precomputed_metric(embeddings[mask]))
+            current_alerts = pre_clustering == pre_cluster
+            pre_cluster_size = np.sum(current_alerts)
+            pre_cluster_raw_time = data.data["raw_time"][current_alerts]
+            pre_cluster_time_length = pre_cluster_raw_time[-1] - pre_cluster_raw_time[0]
+
+            if pre_cluster_time_length <= self.delta:
+                # all distance pairs are relevant
+                # we compute everything at once bc it is less complicated to implement
+                distance_matrix = self.metric(
+                    embeddings[alert_idx_offset : alert_idx_offset + pre_cluster_size]
+                )
+                matrix_idxs = np.indices(distance_matrix.shape)
+                distances.append(distance_matrix.flatten())
+                coords_0.append(matrix_idxs[0].flatten() + alert_idx_offset)
+                coords_1.append(matrix_idxs[1].flatten() + alert_idx_offset)
+
+            else:
+                # not all distance pairs are relevant
+                # we compute distance pairs only in a sliding window of appropriate size for self.delta to save memory while covering all relevant pairs
+
+                # initially the sliding window size will be determined exactly to cover all relevant pairs
+                # this is then adjusted in the subsequent iterations based on the actual data to save compute
+                window_size = 1
+                while (
+                    pre_cluster_raw_time[window_size] - pre_cluster_raw_time[0]
+                    < self.delta
+                ):
+                    window_size += 1
+
+                # at first compute a sliding-window-sized square part of the distance matrix at once bc it is easier to implement
+                distance_matrix = self.metric(
+                    embeddings[alert_idx_offset : alert_idx_offset + window_size + 1]
+                )
+                matrix_idxs = np.indices(distance_matrix.shape)
+                distances.append(distance_matrix.flatten())
+                coords_0.append(matrix_idxs[0].flatten() + alert_idx_offset)
+                coords_1.append(matrix_idxs[1].flatten() + alert_idx_offset)
+
+                # then compute the remaining distance pairs in a sliding window fashion for one alert at a time
+                # thus the values of distance matrix are computed in a fishbone pattern
+                for i in range(window_size + 1, pre_cluster_size):
+                    # adjust the window size
+                    if (
+                        pre_cluster_raw_time[i] - pre_cluster_raw_time[i - window_size]
+                        < self.delta
+                    ):
+                        window_size += 1
+                    elif (
+                        pre_cluster_raw_time[i] - pre_cluster_raw_time[i - window_size]
+                        > self.delta * 1.5
+                    ):
+                        while (
+                            pre_cluster_raw_time[i]
+                            - pre_cluster_raw_time[i - window_size]
+                            > self.delta
+                        ):
+                            window_size -= 1
+                        window_size += 1  # the while loop overshoots by one
+
+                    # compute the distances for the current alert
+                    distance_current_alert_to_window = self.metric(
+                        embeddings[alert_idx_offset + i : alert_idx_offset + i + 1],
+                        embeddings[
+                            alert_idx_offset + i - window_size : alert_idx_offset
+                            + i
+                            + 1
+                        ],
+                    ).flatten()
+                    assert distance_current_alert_to_window.shape == (window_size + 1,)
+                    assert distance_current_alert_to_window[-1] == 0.0
+
+                    # insert them in the lists
+                    window_idxs = np.arange(
+                        alert_idx_offset + i - window_size, alert_idx_offset + i + 1
+                    )
+                    current_alert_idxs = np.ones_like(window_idxs) * (
+                        alert_idx_offset + i
+                    )
+
+                    distances.append(distance_current_alert_to_window)
+                    coords_0.append(current_alert_idxs)
+                    coords_1.append(window_idxs)
+
+                    distances.append(distance_current_alert_to_window[:-1])
+                    coords_0.append(window_idxs[:-1])
+                    coords_1.append(current_alert_idxs[:-1])
+
+            alert_idx_offset += pre_cluster_size
 
         distances = coo_array(
-            distances, (x_coords, y_coords), shape=(len(data), len(data))
+            distances, (coords_0, coords_1), shape=(len(data), len(data))
         ).tocsr()
 
         # apply clustering
@@ -940,6 +1026,11 @@ class AlertBERT(AbstractDatasetGroupingModel):
     def get_embeddings(
         self, data: AlertDataset, apply_dim_red: bool = True, add_time: bool = True
     ) -> np.ndarray:
+        if apply_dim_red:
+            assert self.dim_reduction is not None, (
+                "Dimensionality reduction module must be specified if apply_dim_red is True!"
+            )
+
         num_contexts = len(data) // self.readout
         remainder = len(data) % self.readout
         embeddings = []
@@ -969,10 +1060,10 @@ class AlertBERT(AbstractDatasetGroupingModel):
         embeddings = np.concatenate(embeddings)
 
         # apply dimensionality reduction
-        if apply_dim_red and self.dim_reduction:
+        if apply_dim_red:
             embeddings = self.dim_reduction.fit_transform(embeddings)
 
-        # add time dimension, do we need this?
+        # add time dimension
         if add_time:
             embeddings = np.concatenate(
                 (embeddings, data.data["raw_time"].reshape(-1, 1)), axis=1
