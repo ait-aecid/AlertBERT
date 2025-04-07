@@ -95,6 +95,7 @@ def eval_alert_grouping(
     target_vocab: Vocabulary = None,
     data: MultiAlertDataset = None,
     excluded_macro_label: str = "-",
+    ignore_excluded_macro_label: bool = True,
 ) -> dict[str, dict | np.ndarray]:
     """This function computes multiple evaluation metrics for a clustering model on the given dataset.
     For every batch the metrics are computed for every label in the dataset and the macro metrics are
@@ -126,6 +127,9 @@ def eval_alert_grouping(
 
     lvl_2_labels = get_low_level_labels(target_vocab, 2, excluded_macro_label)
     lvl_1_labels = get_low_level_labels(target_vocab, 1, excluded_macro_label)
+
+    if ignore_excluded_macro_label:
+        assert all_labels_str[0] == excluded_macro_label
 
     # initialize results dict
     results = {
@@ -159,12 +163,27 @@ def eval_alert_grouping(
         true = target_vocab([scenario.data[target]]).numpy().squeeze()
 
         counts = contingency_matrix(true, pred, label_range)
+        assert counts.shape[0] == len(all_labels_int)
+
+        # throw away the counts for the ignored label
+        if ignore_excluded_macro_label:
+            counts = counts[1:]
+
         cluster_sizes = counts.sum(axis=0)
         true_label_counts = counts.sum(axis=1)
         total = true_label_counts.sum()
 
         for label, int_label in zip(all_labels_str, all_labels_int):
+
             idx = int_label - label_range[0]
+            if ignore_excluded_macro_label:
+                idx -= 1
+
+            # continue if this is the ignored label
+            if ignore_excluded_macro_label and label == excluded_macro_label:
+                for v in results["lvl3"][label].values():
+                    v.append(np.nan)
+                continue
 
             # continue if label does not appear in scenario
             if true_label_counts[idx] == 0:
@@ -413,7 +432,7 @@ def grouping_results_v_discriminator_plot(
 
         results = train_results if col[0] == "train" else val_results
 
-        d = results["batch_stats"][disc]
+        d = None # results["batch_stats"][disc]
 
         for i, m in enumerate(used_metrics):
             ax = axs[i]
@@ -614,8 +633,8 @@ if __name__ == "__main__":
     from alertbert.utils import get_device, log_to_stdout
 
     path = "saved_models"
-    n_jobs = 8
-    aitads_a_config = "more-noise-11"
+    aitads_a_config = "original"  # ["original", "simultaneous-attacks", "more-noise-1", "more-noise-2", "more-noise-6", "more-noise-11"]
+    ignore_noise = True
 
     log_to_stdout()
     logging.info("Loading data...")
@@ -698,16 +717,19 @@ if __name__ == "__main__":
                 model=grouping_model,
                 target_vocab=label_vocabs["hierarchical_event_label"],
                 data=train_data,
-                n_jobs=n_jobs,
+                ignore_excluded_macro_label=ignore_noise,
             )
             val_stats = eval_alert_grouping(
                 model=grouping_model,
                 target_vocab=label_vocabs["hierarchical_event_label"],
                 data=val_data,
-                n_jobs=n_jobs,
+                ignore_excluded_macro_label=ignore_noise,
             )
 
             # add model params to results and save results
+
+            suffix = ("_clean" if ignore_noise else "")
+
             # ATTENTION: The grouping_model_params dict is modified in place, so the order of operations is important
             grouping_model_params["model"]["id"] = key
 
@@ -717,7 +739,7 @@ if __name__ == "__main__":
                 train_stats,
                 path,
                 train_stats["model_params"]["dim_reduction"]["name"]
-                + f"_theta_{grouping_model_params['model']['theta']:d}_delta_{grouping_model_params['model']['delta']:d}_{aitads_a_config}",
+                + f"_theta_{grouping_model_params['model']['theta']:d}_delta_{grouping_model_params['model']['delta']:d}_{aitads_a_config}" + suffix,
             )
 
             val_stats["model_params"] = grouping_model_params
@@ -726,11 +748,11 @@ if __name__ == "__main__":
                 val_stats,
                 path,
                 val_stats["model_params"]["dim_reduction"]["name"]
-                + f"_theta_{grouping_model_params['model']['theta']:d}_delta_{grouping_model_params['model']['delta']:d}_{aitads_a_config}",
+                + f"_theta_{grouping_model_params['model']['theta']:d}_delta_{grouping_model_params['model']['delta']:d}_{aitads_a_config}" + suffix,
             )
 
     # execute the following block of code to compute results for time delta models
-    if True:
+    if False:
         logging.info("Evaluating TimeDelta models...")
 
         # define parameters
@@ -758,25 +780,28 @@ if __name__ == "__main__":
                 model=grouping_model,
                 target_vocab=label_vocabs["hierarchical_event_label"],
                 data=train_data,
-                n_jobs=n_jobs,
+                ignore_excluded_macro_label=ignore_noise,
             )
             val_stats = eval_alert_grouping(
                 model=grouping_model,
                 target_vocab=label_vocabs["hierarchical_event_label"],
                 data=val_data,
-                n_jobs=n_jobs,
+                ignore_excluded_macro_label=ignore_noise,
             )
 
             # add model params to results and save results
-            # ATTENTION: The cl_model_params dict is modified in place, so the order of operations is important
+
+            suffix = ("_clean" if ignore_noise else "")
+
+            # ATTENTION: The grouping_model_params dict is modified in place, so the order of operations is important
             grouping_model_params["model"]["delta"] = delta
 
             train_stats["model_params"] = grouping_model_params
             train_stats["model_params"]["data_split"] = "train"
-            save_results(train_stats, path, f"timedelta_{delta}_{aitads_a_config}")
+            save_results(train_stats, path, f"timedelta_{delta}_{aitads_a_config}" + suffix)
 
             val_stats["model_params"] = grouping_model_params
             val_stats["model_params"]["data_split"] = "val"
-            save_results(val_stats, path, f"timedelta_{delta}_{aitads_a_config}")
+            save_results(val_stats, path, f"timedelta_{delta}_{aitads_a_config}" + suffix)
 
     logging.info("Done.")
