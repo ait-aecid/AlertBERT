@@ -634,7 +634,7 @@ if __name__ == "__main__":
 
     path = "saved_models"
     aitads_a_config = "original"  # ["original", "simultaneous-attacks", "more-noise-1", "more-noise-2", "more-noise-6", "more-noise-11"]
-    ignore_noise = True
+    ignore_noise = False
 
     log_to_stdout()
     logging.info("Loading data...")
@@ -652,13 +652,13 @@ if __name__ == "__main__":
             "model": {
                 "id": None,  # to be left blank here
                 "layers": ["embedding", "encoder"],
-                "theta": 1.0,
+                "theta": 3.0,
                 "delta": 2.0,
             },
             "dim_reduction": {
-                "name": "KernelPCA3",
+                "name": "KernelPCA",
                 "model_args": {
-                    "n_components": 3,
+                    "n_components": 2,
                     "kernel": "cosine",
                 },
             },
@@ -669,21 +669,7 @@ if __name__ == "__main__":
 
         # models to be used
         model_ids = [
-            "mlm_1l_4h_base_3-1_60k",
-            "mlm_1l_4h_base_3_3000",
-            "mlm_1l_4h_no_bias_3000",
-            "mlm_1l_4h_short3-1_30k",
-            "mlm_1l_4h_1wd_long_5e-3lr_60k",
-            "mlm_1l_4h_1wd_shor_5e-3lr_30k",
-            "mlm_1l_4h_no_drop_60k",
-            "mlm_1l_4h_no_ties_60k",
             "mlm_1l_4h_zero_0k",
-            "mlm_1l_4h_nano_0k",
-            "mlm_1l_4h_nano_1k",
-            "mlm_1l_4h_nano_2k",
-            "mlm_1l_4h_o_5k",
-            "mlm_1l_4h_n_5k",
-            "mlm_1l_4h_a_5k",
         ]
 
         reports, model_param_dicts = load_reports(model_ids, path)
@@ -706,7 +692,7 @@ if __name__ == "__main__":
                 model=MaskedLangModelInferenceWrapper(
                     model, grouping_model_params["model"]["layers"]
                 ),
-                collate_fn=data_tools[key]["collate_fn"],
+                collate_fn=data_tools[key]["inf_coll_fn"],
                 dim_reduction=dim_reduction,
                 delta=grouping_model_params["model"]["delta"],
                 theta=grouping_model_params["model"]["theta"],
@@ -738,8 +724,12 @@ if __name__ == "__main__":
             save_results(
                 train_stats,
                 path,
-                train_stats["model_params"]["dim_reduction"]["name"]
-                + f"_theta_{grouping_model_params['model']['theta']:d}_delta_{grouping_model_params['model']['delta']:d}_{aitads_a_config}" + suffix,
+                grouping_model_params["dim_reduction"]["name"]
+                + str(grouping_model_params["dim_reduction"]["model_args"]["n_components"])
+                + f"_theta_{grouping_model_params['model']['theta']:d}"
+                + f"_delta_{grouping_model_params['model']['delta']:d}"
+                + f"_{aitads_a_config}"
+                + suffix,
             )
 
             val_stats["model_params"] = grouping_model_params
@@ -747,8 +737,12 @@ if __name__ == "__main__":
             save_results(
                 val_stats,
                 path,
-                val_stats["model_params"]["dim_reduction"]["name"]
-                + f"_theta_{grouping_model_params['model']['theta']:d}_delta_{grouping_model_params['model']['delta']:d}_{aitads_a_config}" + suffix,
+                grouping_model_params["dim_reduction"]["name"]
+                + str(grouping_model_params["dim_reduction"]["model_args"]["n_components"])
+                + f"_theta_{grouping_model_params['model']['theta']:d}"
+                + f"_delta_{grouping_model_params['model']['delta']:d}"
+                + f"_{aitads_a_config}"
+                + suffix,
             )
 
     # execute the following block of code to compute results for time delta models

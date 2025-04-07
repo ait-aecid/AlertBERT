@@ -9,6 +9,7 @@ from scipy.sparse import coo_array
 from sklearn.base import BaseEstimator
 from sklearn.cluster import DBSCAN
 from sklearn.metrics.pairwise import cosine_distances, euclidean_distances
+from sklearn.neighbors import sort_graph_by_row_values
 from tensordict import TensorDict
 from tensordict.nn import TensorDictModule
 from torch import nn
@@ -849,7 +850,7 @@ class TimeDeltaClusteringModel(AbstractClusteringModel):
         self, batch: TensorDict[str, torch.Tensor]
     ) -> TensorDict[str, torch.Tensor]:
         cluster = batch["raw_time"].cpu().numpy().squeeze()
-        cluster = np.diff(cluster, prepend=0)
+        cluster = np.diff(cluster, prepend=cluster[0])
         cluster = np.where(cluster >= self.delta, 1, 0)
         cluster = np.cumsum(cluster)
         batch["cluster"] = torch.tensor(cluster).unsqueeze(0).to(batch.device)
@@ -882,7 +883,7 @@ class TimeDelta(AbstractDatasetGroupingModel):
 
     def forward(self, data: AlertDataset) -> np.ndarray:
         c = data.data["raw_time"]
-        c = np.diff(c, prepend=0)
+        c = np.diff(c, prepend=c[0])
         c = np.where(c >= self.delta, 1, 0)
         return np.cumsum(c)
 
@@ -996,7 +997,6 @@ class AlertBERT(AbstractDatasetGroupingModel):
                         ],
                     ).flatten()
                     assert distance_current_alert_to_window.shape == (window_size + 1,)
-                    assert distance_current_alert_to_window[-1] == 0.0
 
                     # insert them in the lists
                     window_idxs = np.arange(
@@ -1017,8 +1017,13 @@ class AlertBERT(AbstractDatasetGroupingModel):
             alert_idx_offset += pre_cluster_size
 
         distances = coo_array(
-            distances, (coords_0, coords_1), shape=(len(data), len(data))
+            (
+                np.concatenate(distances),
+                (np.concatenate(coords_0), np.concatenate(coords_1)),
+            ),
+            shape=(len(data), len(data)),
         ).tocsr()
+        distances = sort_graph_by_row_values(distances, warn_when_not_sorted=False)
 
         # apply clustering
         return self.clustering.fit_predict(distances)
@@ -1050,8 +1055,9 @@ class AlertBERT(AbstractDatasetGroupingModel):
             )
 
         if remainder:
+            assert len(data) - (i + 1) * self.readout == remainder
             batch = self.collate_fn(
-                [data[-remainder - self.padding : len(data) + self.padding]]
+                [data[ (i + 1) * self.readout - self.padding : len(data) + self.padding]]
             )
             batch = self.model(batch)
             embeddings.append(
