@@ -159,6 +159,7 @@ def eval_alert_grouping(
     }
 
     for scenario in data.scenarios:
+        logging.info("checkpoint")
         pred = model(scenario).squeeze()
         true = target_vocab([scenario.data[target]]).numpy().squeeze()
 
@@ -633,7 +634,7 @@ if __name__ == "__main__":
     from alertbert.utils import get_device, log_to_stdout
 
     path = "saved_models"
-    aitads_a_config = "more-noise-11"  # ["original", "simultaneous-attacks", "more-noise-1", "more-noise-2", "more-noise-6", "more-noise-11"]
+    aitads_a_config = "original"  # ["original", "simultaneous-attacks", "more-noise-1", "more-noise-2", "more-noise-6", "more-noise-11"]
     ignore_noise = False # TODO: compute both at the same time 
 
     log_to_stdout()

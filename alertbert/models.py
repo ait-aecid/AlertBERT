@@ -5,7 +5,6 @@ from typing import Any, Literal
 
 import numpy as np
 import torch
-from joblib import Parallel, delayed
 from scipy.sparse import coo_array
 from scipy.sparse.csgraph import connected_components
 from sklearn.base import BaseEstimator
@@ -947,21 +946,27 @@ class AlertBERT(AbstractDatasetGroupingModel):
                 coords_1.append(matrix_idxs[1].astype(np.int32) + alert_idx_offset)
 
             else:
-                # not all alert pairs are relevant
-                # we compute distance pairs only in a sliding window of appropriate size for self.delta to save memory while covering all relevant pairs
+                # not all alert pairs are relevant,
+                # we compute distance pairs in a (off-)diagonal-block-pattern covering the diagonals of the distance matrix
+                # with rectangles of appropriate size for self.delta to save memory while covering all relevant pairs
 
-                # initially the sliding window size will be determined exactly to cover all relevant pairs
-                # this is then adjusted in the subsequent iterations based on the actual data to save compute
-                window_size = 1
-                while (
-                    pre_cluster_raw_time[window_size] - pre_cluster_raw_time[0]
-                    < self.delta
-                ):
-                    window_size += 1
+                square_sizes = []
+                current_square_size = 1
+                square_start_time = pre_cluster_raw_time[0]
+                for i in range(1, pre_cluster_size):
+                    if pre_cluster_raw_time[i] - square_start_time < self.delta:
+                        current_square_size += 1
+                    else:
+                        square_sizes.append(current_square_size)
+                        square_start_time = pre_cluster_raw_time[i]
+                        current_square_size = 1
+                square_sizes.append(current_square_size)
+                square_sizes = np.array(square_sizes)
+                assert square_sizes.sum() == pre_cluster_size
 
-                # at first compute a sliding-window-sized square part of the distance matrix at once bc it is easier to implement
+                # at first compute of the initial square
                 distance_matrix = self.metric(
-                    embeddings[alert_idx_offset : alert_idx_offset + window_size + 1]
+                    embeddings[alert_idx_offset : alert_idx_offset + square_sizes[0]]
                 )
                 distance_matrix = distance_matrix < self.delta
                 np.fill_diagonal(distance_matrix, False)
@@ -969,45 +974,48 @@ class AlertBERT(AbstractDatasetGroupingModel):
                 coords_0.append(matrix_idxs[0].astype(np.int32) + alert_idx_offset)
                 coords_1.append(matrix_idxs[1].astype(np.int32) + alert_idx_offset)
 
-                # then compute the remaining distance pairs in a sliding window fashion for one alert at a time
-                # thus the values of distance matrix are computed in a fishbone pattern
-                for i in range(window_size + 1, pre_cluster_size):
-                    # adjust the window size
-                    if (
-                        pre_cluster_raw_time[i] - pre_cluster_raw_time[i - window_size]
-                        < self.delta
-                    ):
-                        window_size += 1
-                    elif (
-                        pre_cluster_raw_time[i] - pre_cluster_raw_time[i - window_size]
-                        > self.delta * 1.5
-                    ):
-                        while (
-                            pre_cluster_raw_time[i]
-                            - pre_cluster_raw_time[i - window_size]
-                            > self.delta
-                        ):
-                            window_size -= 1
-                        window_size += 1  # the while loop overshoots by one
+                # then compute the remaining distance pairs by first computing the off-diagonal rectangle connecting 
+                # the last square with the next one, and then the next diagonal square
+                last_square_start = 0
+                current_square_start = square_sizes[0]
+                for current_square_size in square_sizes[1:]:
 
-                    # compute the distances for the current alert
-                    distance_current_alert_to_window = self.metric(
-                        embeddings[alert_idx_offset + i : alert_idx_offset + i + 1],
-                        embeddings[
-                            alert_idx_offset + i - window_size : alert_idx_offset + i
-                        ],
-                    ).flatten()
-                    distance_current_alert_to_window = distance_current_alert_to_window < self.delta
+                    # compute the distances between last and current square
+                    distances_current_to_last_square = self.metric(
+                        embeddings[alert_idx_offset + last_square_start : alert_idx_offset + current_square_start],
+                        embeddings[alert_idx_offset + current_square_start : alert_idx_offset + current_square_start + current_square_size],
+                    )
+                    distances_current_to_last_square = distances_current_to_last_square < self.delta
 
                     # insert connections in the lists
-                    window_idxs = np.nonzero(distance_current_alert_to_window)[0].astype(np.int32) + alert_idx_offset + i - window_size
-                    current_alert_idxs = np.ones_like(window_idxs) * (alert_idx_offset + i)
+                    matrix_idxs = np.nonzero(distances_current_to_last_square)
 
-                    coords_0.append(current_alert_idxs)
-                    coords_1.append(window_idxs)
+                    coo_0 = matrix_idxs[0].astype(np.int32) + alert_idx_offset + last_square_start
+                    coo_1 = matrix_idxs[1].astype(np.int32) + alert_idx_offset + current_square_start
 
-                    coords_0.append(window_idxs)
-                    coords_1.append(current_alert_idxs)
+                    coords_0.append(coo_0)
+                    coords_1.append(coo_1)
+
+                    coords_0.append(coo_1)
+                    coords_1.append(coo_0)
+
+                    # compute the distances of the current square
+                    distance_matrix = self.metric(
+                        embeddings[alert_idx_offset + current_square_start : alert_idx_offset + current_square_start + current_square_size]
+                    )
+                    distance_matrix = distance_matrix < self.delta
+                    np.fill_diagonal(distance_matrix, False)
+                    matrix_idxs = np.nonzero(distance_matrix)
+                    coords_0.append(
+                        matrix_idxs[0].astype(np.int32) + alert_idx_offset + current_square_start
+                    )
+                    coords_1.append(
+                        matrix_idxs[1].astype(np.int32) + alert_idx_offset + current_square_start
+                    )
+
+                    # update the start indices for the next square
+                    last_square_start = current_square_start
+                    current_square_start += current_square_size
 
             alert_idx_offset += pre_cluster_size
 
