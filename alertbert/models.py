@@ -5,11 +5,12 @@ from typing import Any, Literal
 
 import numpy as np
 import torch
+from joblib import Parallel, delayed
 from scipy.sparse import coo_array
+from scipy.sparse.csgraph import connected_components
 from sklearn.base import BaseEstimator
-from sklearn.cluster import DBSCAN
-from sklearn.metrics.pairwise import cosine_distances, euclidean_distances
-from sklearn.neighbors import sort_graph_by_row_values
+from sklearn.decomposition import PCA
+from sklearn.metrics.pairwise import cosine_distances
 from tensordict import TensorDict
 from tensordict.nn import TensorDictModule
 from torch import nn
@@ -804,12 +805,12 @@ class TokenClusteringModel(AbstractClusteringModel):
 
 
 class CombinedTimeCosineMetric:
-    """A distance metric that is defined as the maximum of the cosine distance between the first n-1 dimensions and
-        the euclidean distance in the last dimension of the input vectors.
+    """A distance metric that is defined as the maximum of the cosine distance between the first n-1 dimensions (the embedding part) and
+        the euclidean distance in the last dimension (the time part) of the input vectors.
 
     Args:
-        theta (float, optional): A scaling factor for the cosine distance, opposing vectors will have
-            the cosine distance 2 * theta. Defaults to 1.
+        theta (float, optional): A scaling factor for the cosine distance, vectors with the same time part and
+        opposing embedding parts will have the distance theta. Defaults to 1.
     """
 
     def __init__(self, theta: float = 1.0) -> None:
@@ -823,8 +824,8 @@ class CombinedTimeCosineMetric:
         if y.ndim == 1:
             y = y.unsequeze(0)
         return np.maximum(
-            cosine_distances(x[:, :-1], y[:, :-1]) * self.theta,
-            euclidean_distances(x[:, -1:] - x[0, -1], y[:, -1:] - x[0, -1]),
+            cosine_distances(x[:, :-1], y[:, :-1]) / 2. * self.theta,
+            np.abs(x[:, -1][:, None] - y[:, -1]),
         )
 
 
@@ -893,7 +894,7 @@ class AlertBERT(AbstractDatasetGroupingModel):
         self,
         model: MaskedLangModelInferenceWrapper,
         collate_fn: BaseSequenceCollate,
-        dim_reduction: BaseEstimator = None,
+        dim_reduction: int = 2,
         delta: float = 2.0,
         theta: float = 1.0,
         padding: int = 1024,
@@ -902,25 +903,22 @@ class AlertBERT(AbstractDatasetGroupingModel):
         super().__init__()
         self.model = model
         self.collate_fn = collate_fn
-        self.dim_reduction = dim_reduction
+        self.dim_reduction = PCA(n_components=dim_reduction) if dim_reduction else None
         self.delta = delta
         self.theta = theta
         self.padding = padding
         self.readout = readout
         self.timedelta = TimeDelta(delta=delta)
-        self.clustering = DBSCAN(eps=delta, metric="precomputed", min_samples=1)
         self.metric = CombinedTimeCosineMetric(theta=theta)
 
     def forward(self, data: AlertDataset) -> np.ndarray:
         # get embeddings of full dataset
-        # if necessary, dont compute all emebddings here ta once, but do it on demand during the distance computation
         embeddings = self.get_embeddings(data)
 
         # compute pre clustering
         pre_clustering = self.timedelta(data)
 
-        # build sparse distance matrix based on pre-clustering
-        distances = []
+        # build graph adjacency matrix based on pre-clustering
         coords_0 = []
         coords_1 = []
 
@@ -930,22 +928,26 @@ class AlertBERT(AbstractDatasetGroupingModel):
         for pre_cluster in range(pre_clustering[-1] + 1):
             current_alerts = pre_clustering == pre_cluster
             pre_cluster_size = np.sum(current_alerts)
+            if pre_cluster_size <= 1:
+                # only one alert in the pre-cluster, no need to compute distances
+                continue
             pre_cluster_raw_time = data.data["raw_time"][current_alerts]
             pre_cluster_time_length = pre_cluster_raw_time[-1] - pre_cluster_raw_time[0]
 
             if pre_cluster_time_length <= self.delta:
-                # all distance pairs are relevant
+                # all alert pairs are relevant
                 # we compute everything at once bc it is less complicated to implement
                 distance_matrix = self.metric(
                     embeddings[alert_idx_offset : alert_idx_offset + pre_cluster_size]
                 )
-                matrix_idxs = np.indices(distance_matrix.shape)
-                distances.append(distance_matrix.flatten())
-                coords_0.append(matrix_idxs[0].flatten() + alert_idx_offset)
-                coords_1.append(matrix_idxs[1].flatten() + alert_idx_offset)
+                distance_matrix = distance_matrix < self.delta
+                np.fill_diagonal(distance_matrix, False)
+                matrix_idxs = np.nonzero(distance_matrix)
+                coords_0.append(matrix_idxs[0].astype(np.int32) + alert_idx_offset)
+                coords_1.append(matrix_idxs[1].astype(np.int32) + alert_idx_offset)
 
             else:
-                # not all distance pairs are relevant
+                # not all alert pairs are relevant
                 # we compute distance pairs only in a sliding window of appropriate size for self.delta to save memory while covering all relevant pairs
 
                 # initially the sliding window size will be determined exactly to cover all relevant pairs
@@ -961,10 +963,11 @@ class AlertBERT(AbstractDatasetGroupingModel):
                 distance_matrix = self.metric(
                     embeddings[alert_idx_offset : alert_idx_offset + window_size + 1]
                 )
-                matrix_idxs = np.indices(distance_matrix.shape)
-                distances.append(distance_matrix.flatten())
-                coords_0.append(matrix_idxs[0].flatten() + alert_idx_offset)
-                coords_1.append(matrix_idxs[1].flatten() + alert_idx_offset)
+                distance_matrix = distance_matrix < self.delta
+                np.fill_diagonal(distance_matrix, False)
+                matrix_idxs = np.nonzero(distance_matrix)
+                coords_0.append(matrix_idxs[0].astype(np.int32) + alert_idx_offset)
+                coords_1.append(matrix_idxs[1].astype(np.int32) + alert_idx_offset)
 
                 # then compute the remaining distance pairs in a sliding window fashion for one alert at a time
                 # thus the values of distance matrix are computed in a fishbone pattern
@@ -991,42 +994,37 @@ class AlertBERT(AbstractDatasetGroupingModel):
                     distance_current_alert_to_window = self.metric(
                         embeddings[alert_idx_offset + i : alert_idx_offset + i + 1],
                         embeddings[
-                            alert_idx_offset + i - window_size : alert_idx_offset
-                            + i
-                            + 1
+                            alert_idx_offset + i - window_size : alert_idx_offset + i
                         ],
                     ).flatten()
-                    assert distance_current_alert_to_window.shape == (window_size + 1,)
+                    distance_current_alert_to_window = distance_current_alert_to_window < self.delta
 
-                    # insert them in the lists
-                    window_idxs = np.arange(
-                        alert_idx_offset + i - window_size, alert_idx_offset + i + 1
-                    )
-                    current_alert_idxs = np.ones_like(window_idxs) * (
-                        alert_idx_offset + i
-                    )
+                    # insert connections in the lists
+                    window_idxs = np.nonzero(distance_current_alert_to_window)[0].astype(np.int32) + alert_idx_offset + i - window_size
+                    current_alert_idxs = np.ones_like(window_idxs) * (alert_idx_offset + i)
 
-                    distances.append(distance_current_alert_to_window)
                     coords_0.append(current_alert_idxs)
                     coords_1.append(window_idxs)
 
-                    distances.append(distance_current_alert_to_window[:-1])
-                    coords_0.append(window_idxs[:-1])
-                    coords_1.append(current_alert_idxs[:-1])
+                    coords_0.append(window_idxs)
+                    coords_1.append(current_alert_idxs)
 
             alert_idx_offset += pre_cluster_size
 
-        distances = coo_array(
-            (
-                np.concatenate(distances),
-                (np.concatenate(coords_0), np.concatenate(coords_1)),
-            ),
-            shape=(len(data), len(data)),
-        ).tocsr()
-        distances = sort_graph_by_row_values(distances, warn_when_not_sorted=False)
+        assert alert_idx_offset == len(data)
 
-        # apply clustering
-        return self.clustering.fit_predict(distances)
+        coords_0 = np.concatenate(coords_0)
+        coords_1 = np.concatenate(coords_1)
+        connections = np.ones_like(coords_0, dtype=bool)
+
+        connections = coo_array((connections, (coords_0, coords_1),), shape=(len(data), len(data)))
+        del coords_0, coords_1
+        connections = connections.tocsr()
+
+        # find connected components aka groups
+        n_groups, pred = connected_components(connections, connection="strong")
+        del connections
+        return pred
 
     def get_embeddings(
         self, data: AlertDataset, apply_dim_red: bool = True, add_time: bool = True

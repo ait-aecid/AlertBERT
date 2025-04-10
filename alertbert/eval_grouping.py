@@ -633,8 +633,8 @@ if __name__ == "__main__":
     from alertbert.utils import get_device, log_to_stdout
 
     path = "saved_models"
-    aitads_a_config = "original"  # ["original", "simultaneous-attacks", "more-noise-1", "more-noise-2", "more-noise-6", "more-noise-11"]
-    ignore_noise = False
+    aitads_a_config = "more-noise-11"  # ["original", "simultaneous-attacks", "more-noise-1", "more-noise-2", "more-noise-6", "more-noise-11"]
+    ignore_noise = False # TODO: compute both at the same time 
 
     log_to_stdout()
     logging.info("Loading data...")
@@ -645,27 +645,18 @@ if __name__ == "__main__":
     # execute the following block of code to compute results for MLM based models
     if True:
         logging.info("Evaluating MLMs...")
-        from sklearn.decomposition import KernelPCA
 
         # define dim reduction and clustering parameters
         grouping_model_params = {
             "model": {
                 "id": None,  # to be left blank here
                 "layers": ["embedding", "encoder"],
-                "theta": 3.0,
+                "theta": 6.0,
                 "delta": 2.0,
-            },
-            "dim_reduction": {
-                "name": "KernelPCA",
-                "model_args": {
-                    "n_components": 2,
-                    "kernel": "cosine",
-                },
+                "dim_reduction": 2,
             },
             "data_split": None,  # to be left blank here
         }
-
-        dim_reduction = KernelPCA(**grouping_model_params["dim_reduction"]["model_args"])
 
         # models to be used
         model_ids = [
@@ -693,7 +684,7 @@ if __name__ == "__main__":
                     model, grouping_model_params["model"]["layers"]
                 ),
                 collate_fn=data_tools[key]["inf_coll_fn"],
-                dim_reduction=dim_reduction,
+                dim_reduction=grouping_model_params["model"]["dim_reduction"],
                 delta=grouping_model_params["model"]["delta"],
                 theta=grouping_model_params["model"]["theta"],
             )
@@ -724,10 +715,9 @@ if __name__ == "__main__":
             save_results(
                 train_stats,
                 path,
-                grouping_model_params["dim_reduction"]["name"]
-                + str(grouping_model_params["dim_reduction"]["model_args"]["n_components"])
-                + f"_theta_{grouping_model_params['model']['theta']:d}"
-                + f"_delta_{grouping_model_params['model']['delta']:d}"
+                f"{grouping_model_params["model"]["dim_reduction"]}dim"
+                + f"_theta_{grouping_model_params['model']['theta']}"
+                + f"_delta_{grouping_model_params['model']['delta']}"
                 + f"_{aitads_a_config}"
                 + suffix,
             )
@@ -737,10 +727,9 @@ if __name__ == "__main__":
             save_results(
                 val_stats,
                 path,
-                grouping_model_params["dim_reduction"]["name"]
-                + str(grouping_model_params["dim_reduction"]["model_args"]["n_components"])
-                + f"_theta_{grouping_model_params['model']['theta']:d}"
-                + f"_delta_{grouping_model_params['model']['delta']:d}"
+                f"{grouping_model_params["model"]["dim_reduction"]}dim"
+                + f"_theta_{grouping_model_params['model']['theta']}"
+                + f"_delta_{grouping_model_params['model']['delta']}"
                 + f"_{aitads_a_config}"
                 + suffix,
             )
