@@ -90,35 +90,45 @@ metrics = [
 
 
 def eval_alert_grouping(
-    model: AbstractDatasetGroupingModel,
+    model: AbstractDatasetGroupingModel = None,
     target: str = "hierarchical_event_label",
     target_vocab: Vocabulary = None,
     data: MultiAlertDataset = None,
+    contingency_matrices: list[np.ndarray[int]] = None,
     excluded_macro_label: str = "-",
     ignore_excluded_macro_label: bool = True,
-) -> dict[str, dict | np.ndarray]:
-    """This function computes multiple evaluation metrics for a clustering model on the given dataset.
-    For every batch the metrics are computed for every label in the dataset and the macro metrics are
+) -> tuple[dict[str, dict | np.ndarray], list[np.ndarray[int]]]:
+    """This function computes multiple evaluation metrics for an alert grouping model on the given dataset.
+    For every scenario the metrics are computed for every label in the dataset and the macro metrics are
     computed over all labels except the excluded label (which is supposed to be the false positive label).
-    Further, also other batch statistics are computed and stored in the results dict.
+    Alternatively to the model and data also already computed contingency matrices can be provided.
+    This function only supports hierarchical labels!
 
     Args:
-        model (AbstractClusteringModel): The clustering model to be evaluated.
+        model (AbstractDatasetGroupingModel): The alert grouping model to be evaluated.
+            Only used if contingency_matrices is None.
         target (str, optional): The target label in the dataset. Defaults to "hierarchical_event_label".
-        loader (DataLoader): The data loader providing the dataset. Defaults to None.
-        target_vocab (Vocabulary): The vocabulary containing the target labels. Defaults to None.
-        epochs (int, optional): The number of epochs to run the evaluation. Defaults to 5.
-        n_jobs (int, optional): The number of jobs to run in parallel. Defaults to -1 (use all available processors).
+        target_vocab (Vocabulary): The vocabulary containing the target labels.
+        data (MultiAlertDataset): The dataset to be evaluated. Only used if contingency_matrices is None.
+        contingency_matrices (list[np.ndarray[int]], optional): The contingency matrices to be used for evaluation.
+            If None, the model and data will be used to compute the matrices.
         excluded_macro_label (str, optional): The label to exclude from macro calculations. Defaults to "-".
+        ignore_excluded_macro_label (bool, optional): Whether to ignore the samples belonging to the
+            excluded macro label in the results. Defaults to True.
+
     Returns:
-        dict[str, dict | np.ndarray]: A dictionary containing evaluation metrics for each label,
-            macro metrics and batch statistics.
+        tuple[dict[str, dict | np.ndarray], list[np.ndarray[int]]]: A tuple containing the results dictionary and the contingency matrices.
+            The results dictionary contains the metrics for every label in the dataset and the macro metrics.
+            The contingency matrices are the ones used for evaluation.
     """
-    # TODO: Update docstring
 
     assert target.startswith("hierarchical"), (
         "Non-hierarchical labels have been deprecated in this function."
     )
+    if contingency_matrices is None:
+        assert model is not None and data is not None, (
+            "Either contingency matrices or model and data must be provided."
+        )
 
     # set up labels
     all_labels_str = get_str_labels(target_vocab)  # level 3 labels
@@ -130,6 +140,17 @@ def eval_alert_grouping(
 
     if ignore_excluded_macro_label:
         assert all_labels_str[0] == excluded_macro_label
+
+    # compute contingency matrices if they are not provided
+    if contingency_matrices is None:
+        contingency_matrices = []
+
+        for scenario in data.scenarios:
+            pred = model(scenario).squeeze()
+            true = target_vocab([scenario.data[target]]).numpy().squeeze()
+            contingency_matrices.append(contingency_matrix(true, pred, label_range))
+
+        del pred, true
 
     # initialize results dict
     results = {
@@ -158,12 +179,7 @@ def eval_alert_grouping(
         },
     }
 
-    for scenario in data.scenarios:
-        logging.info("checkpoint")
-        pred = model(scenario).squeeze()
-        true = target_vocab([scenario.data[target]]).numpy().squeeze()
-
-        counts = contingency_matrix(true, pred, label_range)
+    for counts in contingency_matrices:
         assert counts.shape[0] == len(all_labels_int)
 
         # throw away the counts for the ignored label
@@ -175,7 +191,6 @@ def eval_alert_grouping(
         total = true_label_counts.sum()
 
         for label, int_label in zip(all_labels_str, all_labels_int):
-
             idx = int_label - label_range[0]
             if ignore_excluded_macro_label:
                 idx -= 1
@@ -318,7 +333,7 @@ def eval_alert_grouping(
             ),
         )
 
-    return results
+    return results, contingency_matrices
 
 
 # result saving and loading functions
@@ -373,7 +388,6 @@ def get_metrics(exclude_raw_metrics: bool = True) -> list[str]:
     return metrics[1:]
 
 
-# TODO: Decide whether to keep the scatter plot functions or not.
 def get_scatter_plot_figure(
     used_metrics: list[str], x_label: str = None, y_label: str = None
 ) -> tuple[plt.Figure, plt.Axes]:
@@ -381,7 +395,7 @@ def get_scatter_plot_figure(
     fig, all_axs = plt.subplots(
         len(used_metrics),
         4,
-        figsize=(4 * len(plot_cols) , 4.5 * len(used_metrics)),
+        figsize=(4 * len(plot_cols), 4.5 * len(used_metrics)),
         sharey="row",
         sharex="row",
     )
@@ -401,65 +415,6 @@ def get_scatter_plot_figure(
                 ax.set_xlim((-0.05 if m != "mcc" else -1.05), 1.05)
 
     return fig, all_axs
-
-
-def grouping_results_v_discriminator_plot(
-    train_results: dict[str, dict | np.ndarray],
-    val_results: dict[str, dict | np.ndarray],
-    target_vocab: Vocabulary,
-    disc: str = "context_entropy",
-    exclude_raw_metrics: bool = True,
-    excluded_label: str = "-",
-) -> None:
-    """This function plots the results of a clustering model against a discriminator variable.
-    For every metric and data split the results for each label and the macro results are plotted against the discriminator variable.
-
-    Args:
-        train_results (dict[str, dict | np.ndarray]): The training results dict.
-        val_results (dict[str, dict | np.ndarray]): The validation results dict.
-        target_vocab (Vocabulary): The vocabulary containing the target labels.
-        disc (str, optional): The discriminator variable. Defaults to "context_entropy".
-        macro_colour (str, optional): The feature to use for the colouring in the macro plots. Defaults to "context_entropy".
-        exclude_raw_metrics (bool, optional): Whether to exclude the raw metrics (tp, fp, tn, fn) from the plots. Defaults to True.
-        excluded_label (str, optional): The label to be excluded from plotting. This is supposed to be the false positive label. Defaults to "-".
-    """
-
-    all_labels_str = get_low_level_labels(target_vocab, 1, excluded_label)
-    used_metrics = get_metrics(exclude_raw_metrics)
-    fig, all_axs = get_scatter_plot_figure(used_metrics, disc)
-
-    for j, col in enumerate(plot_cols):
-        axs = all_axs[j]
-
-        results = train_results if col[0] == "train" else val_results
-
-        d = None # results["batch_stats"][disc]
-
-        for i, m in enumerate(used_metrics):
-            ax = axs[i]
-            if col[1] == "label":
-                x_vals = []
-                y_vals = []
-                c_vals = []
-                for j, label in enumerate(all_labels_str):
-                    if label == excluded_label:
-                        continue
-                    x_vals.append(d)
-                    y_vals.append(results["lvl1"][label][m])
-                    c_vals.append(j * np.ones_like(d))
-                x_vals = np.concatenate(x_vals)
-                y_vals = np.concatenate(y_vals)
-                c_vals = np.concatenate(c_vals)
-            else:
-                x_vals = d
-                y_vals = results["macro"][m]
-                c_vals = None  # results["batch_stats"][macro_colour]
-            ax.scatter(
-                x=x_vals, y=y_vals, c=c_vals, s=20.0, alpha=0.3, edgecolors="none"
-            )
-
-    plt.tight_layout()
-    plt.show()
 
 
 def model_comparison_plot(
@@ -509,14 +464,12 @@ def model_comparison_plot(
                 x_vals = []
                 y_vals = []
                 c_vals = []
-                for j,label in enumerate(all_labels_str):
+                for j, label in enumerate(all_labels_str):
                     if label == excluded_label:
                         continue
                     x_vals.append(results_x["lvl1"][label][m])
                     y_vals.append(results_y["lvl1"][label][m])
-                    c_vals.append(
-                        j * np.ones_like(results_x["lvl1"][label][m])
-                    )
+                    c_vals.append(j * np.ones_like(results_x["lvl1"][label][m]))
                 x_vals = np.concatenate(x_vals)
                 y_vals = np.concatenate(y_vals)
                 c_vals = np.concatenate(c_vals)
@@ -635,10 +588,9 @@ if __name__ == "__main__":
 
     path = "saved_models"
     aitads_a_config = "original"  # ["original", "simultaneous-attacks", "more-noise-1", "more-noise-2", "more-noise-6", "more-noise-11"]
-    ignore_noise = False # TODO: compute both at the same time 
 
     log_to_stdout()
-    logging.info("Loading data...")
+    logging.info(f"Loading data config {aitads_a_config} ...")
     train_data = AITAlertDataset(split="train", configuration=aitads_a_config)
     val_data = AITAlertDataset(split="val", configuration=aitads_a_config)
     label_vocabs = load_ground_truth_label_vocabs(path, aitads_a_config)
@@ -691,50 +643,82 @@ if __name__ == "__main__":
             )
 
             # evaluate model
-            train_stats = eval_alert_grouping(
+            train_stats_noise, cont_matrices = eval_alert_grouping(
                 model=grouping_model,
                 target_vocab=label_vocabs["hierarchical_event_label"],
                 data=train_data,
-                ignore_excluded_macro_label=ignore_noise,
+                ignore_excluded_macro_label=False,
             )
-            val_stats = eval_alert_grouping(
+            train_stats_clean, _ = eval_alert_grouping(
+                target_vocab=label_vocabs["hierarchical_event_label"],
+                contingency_matrices=cont_matrices,
+            )
+            val_stats_noise, cont_matrices = eval_alert_grouping(
                 model=grouping_model,
                 target_vocab=label_vocabs["hierarchical_event_label"],
                 data=val_data,
-                ignore_excluded_macro_label=ignore_noise,
+                ignore_excluded_macro_label=False,
+            )
+            val_stats_clean, _ = eval_alert_grouping(
+                target_vocab=label_vocabs["hierarchical_event_label"],
+                contingency_matrices=cont_matrices,
             )
 
             # add model params to results and save results
-
-            suffix = ("_clean" if ignore_noise else "")
-
             # ATTENTION: The grouping_model_params dict is modified in place, so the order of operations is important
             grouping_model_params["model"]["id"] = key
 
-            train_stats["model_params"] = grouping_model_params
-            train_stats["model_params"]["data_split"] = "train"
+            suffix = "_noise"
+
+            train_stats_noise["model_params"] = grouping_model_params
+            train_stats_noise["model_params"]["data_split"] = "train"
             save_results(
-                train_stats,
+                train_stats_noise,
                 path,
-                f"{grouping_model_params["model"]["dim_reduction"]}dim"
+                f"{grouping_model_params['model']['dim_reduction']}dim"
                 + f"_theta_{grouping_model_params['model']['theta']}"
                 + f"_delta_{grouping_model_params['model']['delta']}"
                 + f"_{aitads_a_config}"
                 + suffix,
             )
 
-            val_stats["model_params"] = grouping_model_params
-            val_stats["model_params"]["data_split"] = "val"
+            val_stats_noise["model_params"] = grouping_model_params
+            val_stats_noise["model_params"]["data_split"] = "val"
             save_results(
-                val_stats,
+                val_stats_noise,
                 path,
-                f"{grouping_model_params["model"]["dim_reduction"]}dim"
+                f"{grouping_model_params['model']['dim_reduction']}dim"
                 + f"_theta_{grouping_model_params['model']['theta']}"
                 + f"_delta_{grouping_model_params['model']['delta']}"
                 + f"_{aitads_a_config}"
                 + suffix,
             )
 
+            suffix = "_clean"
+
+            train_stats_clean["model_params"] = grouping_model_params
+            train_stats_clean["model_params"]["data_split"] = "train"
+            save_results(
+                train_stats_clean,
+                path,
+                f"{grouping_model_params['model']['dim_reduction']}dim"
+                + f"_theta_{grouping_model_params['model']['theta']}"
+                + f"_delta_{grouping_model_params['model']['delta']}"
+                + f"_{aitads_a_config}"
+                + suffix,
+            )
+
+            val_stats_clean["model_params"] = grouping_model_params
+            val_stats_clean["model_params"]["data_split"] = "val"
+            save_results(
+                val_stats_clean,
+                path,
+                f"{grouping_model_params['model']['dim_reduction']}dim"
+                + f"_theta_{grouping_model_params['model']['theta']}"
+                + f"_delta_{grouping_model_params['model']['delta']}"
+                + f"_{aitads_a_config}"
+                + suffix,
+            )
     # execute the following block of code to compute results for time delta models
     if False:
         logging.info("Evaluating TimeDelta models...")
@@ -760,32 +744,57 @@ if __name__ == "__main__":
             grouping_model = TimeDelta(delta=delta)
 
             # evaluate model
-            train_stats = eval_alert_grouping(
+            train_stats_noise, cont_matrices = eval_alert_grouping(
                 model=grouping_model,
                 target_vocab=label_vocabs["hierarchical_event_label"],
                 data=train_data,
-                ignore_excluded_macro_label=ignore_noise,
+                ignore_excluded_macro_label=False,
             )
-            val_stats = eval_alert_grouping(
+            train_stats_clean, _ = eval_alert_grouping(
+                target_vocab=label_vocabs["hierarchical_event_label"],
+                contingency_matrices=cont_matrices,
+            )
+            val_stats_noise, cont_matrices = eval_alert_grouping(
                 model=grouping_model,
                 target_vocab=label_vocabs["hierarchical_event_label"],
                 data=val_data,
-                ignore_excluded_macro_label=ignore_noise,
+                ignore_excluded_macro_label=False,
+            )
+            val_stats_clean, _ = eval_alert_grouping(
+                target_vocab=label_vocabs["hierarchical_event_label"],
+                contingency_matrices=cont_matrices,
             )
 
             # add model params to results and save results
-
-            suffix = ("_clean" if ignore_noise else "")
-
             # ATTENTION: The grouping_model_params dict is modified in place, so the order of operations is important
             grouping_model_params["model"]["delta"] = delta
 
-            train_stats["model_params"] = grouping_model_params
-            train_stats["model_params"]["data_split"] = "train"
-            save_results(train_stats, path, f"timedelta_{delta}_{aitads_a_config}" + suffix)
+            suffix = "_noise"
 
-            val_stats["model_params"] = grouping_model_params
-            val_stats["model_params"]["data_split"] = "val"
-            save_results(val_stats, path, f"timedelta_{delta}_{aitads_a_config}" + suffix)
+            train_stats_noise["model_params"] = grouping_model_params
+            train_stats_noise["model_params"]["data_split"] = "train"
+            save_results(
+                train_stats_noise, path, f"timedelta_{delta}_{aitads_a_config}" + suffix
+            )
+
+            val_stats_noise["model_params"] = grouping_model_params
+            val_stats_noise["model_params"]["data_split"] = "val"
+            save_results(
+                val_stats_noise, path, f"timedelta_{delta}_{aitads_a_config}" + suffix
+            )
+
+            suffix = "_clean"
+
+            train_stats_clean["model_params"] = grouping_model_params
+            train_stats_clean["model_params"]["data_split"] = "train"
+            save_results(
+                train_stats_clean, path, f"timedelta_{delta}_{aitads_a_config}" + suffix
+            )
+
+            val_stats_clean["model_params"] = grouping_model_params
+            val_stats_clean["model_params"]["data_split"] = "val"
+            save_results(
+                val_stats_clean, path, f"timedelta_{delta}_{aitads_a_config}" + suffix
+            )
 
     logging.info("Done.")

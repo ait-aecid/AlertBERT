@@ -823,7 +823,7 @@ class CombinedTimeCosineMetric:
         if y.ndim == 1:
             y = y.unsequeze(0)
         return np.maximum(
-            cosine_distances(x[:, :-1], y[:, :-1]) / 2. * self.theta,
+            cosine_distances(x[:, :-1], y[:, :-1]) / 2.0 * self.theta,
             np.abs(x[:, -1][:, None] - y[:, -1]),
         )
 
@@ -858,7 +858,6 @@ class TimeDeltaClusteringModel(AbstractClusteringModel):
 
 
 # whole dataset clustering models
-# TODO: add docstrings
 
 
 class AbstractDatasetGroupingModel:
@@ -878,6 +877,20 @@ class AbstractDatasetGroupingModel:
 
 
 class TimeDelta(AbstractDatasetGroupingModel):
+    """An alert grouping model that groups alerts based on the time differences
+    between them as discussed in the paper [Dealing with Security Alert Flooding:
+    Using Machine Learning for Domain-independent Alert Aggregation](https://dl.acm.org/doi/pdf/10.1145/3510581).
+    A sequence of alerts is considered to be a group if the time difference between any two
+    consecutive alerts is less than a specified delta.
+
+    Args:
+        delta (float, optional): The time difference threshold for grouping. Defaults to 2.0.
+
+    Methods:
+        forward(data: AlertDataset) -> np.ndarray:
+            Groups the dataset based on the time differences between alerts.
+    """
+
     def __init__(self, delta: float = 2.0) -> None:
         self.delta = delta
 
@@ -889,6 +902,26 @@ class TimeDelta(AbstractDatasetGroupingModel):
 
 
 class AlertBERT(AbstractDatasetGroupingModel):
+    """An alert grouping model that groups alerts based on embeddings obtained from masked language models.
+    The model uses PCA for embedding dimensionality reduction and defines alert groups with a method that
+    is equivalent to DBSCAN clustering with min_samples=1 and embedding distances defined by CombinedTimeCosineMetric.
+
+    Args:
+        model (MaskedLangModelInferenceWrapper): The masked language model to be used for alert embedding.
+        collate_fn (BaseSequenceCollate): The collate function for the masked language model.
+        dim_reduction (int, optional): The number of dimensions to reduce the embeddings to. Defaults to 2.
+        delta (float, optional): The distance threshold for clustering. Defaults to 2.0.
+        theta (float, optional): The scaling factor for the CombinedTimeCosineMetric. Defaults to 1.0.
+        padding (int, optional): The padding width for reading embeddings from the masked language model. Defaults to 1024.
+        readout (int, optional): The readout width for reading embeddings from the masked language model. Defaults to 2048.
+
+    Methods:
+        forward(data: AlertDataset) -> np.ndarray:
+            Groups the dataset based on the embeddings obtained from the masked language model.
+        get_embeddings(data: AlertDataset) -> np.ndarray:
+            Computes the embeddings for the dataset using the masked language model.
+    """
+
     def __init__(
         self,
         model: MaskedLangModelInferenceWrapper,
@@ -929,6 +962,7 @@ class AlertBERT(AbstractDatasetGroupingModel):
             pre_cluster_size = np.sum(current_alerts)
             if pre_cluster_size <= 1:
                 # only one alert in the pre-cluster, no need to compute distances
+                alert_idx_offset += pre_cluster_size
                 continue
             pre_cluster_raw_time = data.data["raw_time"][current_alerts]
             pre_cluster_time_length = pre_cluster_raw_time[-1] - pre_cluster_raw_time[0]
@@ -974,24 +1008,40 @@ class AlertBERT(AbstractDatasetGroupingModel):
                 coords_0.append(matrix_idxs[0].astype(np.int32) + alert_idx_offset)
                 coords_1.append(matrix_idxs[1].astype(np.int32) + alert_idx_offset)
 
-                # then compute the remaining distance pairs by first computing the off-diagonal rectangle connecting 
+                # then compute the remaining distance pairs by first computing the off-diagonal rectangle connecting
                 # the last square with the next one, and then the next diagonal square
                 last_square_start = 0
                 current_square_start = square_sizes[0]
                 for current_square_size in square_sizes[1:]:
-
                     # compute the distances between last and current square
                     distances_current_to_last_square = self.metric(
-                        embeddings[alert_idx_offset + last_square_start : alert_idx_offset + current_square_start],
-                        embeddings[alert_idx_offset + current_square_start : alert_idx_offset + current_square_start + current_square_size],
+                        embeddings[
+                            alert_idx_offset + last_square_start : alert_idx_offset
+                            + current_square_start
+                        ],
+                        embeddings[
+                            alert_idx_offset + current_square_start : alert_idx_offset
+                            + current_square_start
+                            + current_square_size
+                        ],
                     )
-                    distances_current_to_last_square = distances_current_to_last_square < self.delta
+                    distances_current_to_last_square = (
+                        distances_current_to_last_square < self.delta
+                    )
 
                     # insert connections in the lists
                     matrix_idxs = np.nonzero(distances_current_to_last_square)
 
-                    coo_0 = matrix_idxs[0].astype(np.int32) + alert_idx_offset + last_square_start
-                    coo_1 = matrix_idxs[1].astype(np.int32) + alert_idx_offset + current_square_start
+                    coo_0 = (
+                        matrix_idxs[0].astype(np.int32)
+                        + alert_idx_offset
+                        + last_square_start
+                    )
+                    coo_1 = (
+                        matrix_idxs[1].astype(np.int32)
+                        + alert_idx_offset
+                        + current_square_start
+                    )
 
                     coords_0.append(coo_0)
                     coords_1.append(coo_1)
@@ -1001,16 +1051,24 @@ class AlertBERT(AbstractDatasetGroupingModel):
 
                     # compute the distances of the current square
                     distance_matrix = self.metric(
-                        embeddings[alert_idx_offset + current_square_start : alert_idx_offset + current_square_start + current_square_size]
+                        embeddings[
+                            alert_idx_offset + current_square_start : alert_idx_offset
+                            + current_square_start
+                            + current_square_size
+                        ]
                     )
                     distance_matrix = distance_matrix < self.delta
                     np.fill_diagonal(distance_matrix, False)
                     matrix_idxs = np.nonzero(distance_matrix)
                     coords_0.append(
-                        matrix_idxs[0].astype(np.int32) + alert_idx_offset + current_square_start
+                        matrix_idxs[0].astype(np.int32)
+                        + alert_idx_offset
+                        + current_square_start
                     )
                     coords_1.append(
-                        matrix_idxs[1].astype(np.int32) + alert_idx_offset + current_square_start
+                        matrix_idxs[1].astype(np.int32)
+                        + alert_idx_offset
+                        + current_square_start
                     )
 
                     # update the start indices for the next square
@@ -1024,8 +1082,12 @@ class AlertBERT(AbstractDatasetGroupingModel):
         coords_0 = np.concatenate(coords_0)
         coords_1 = np.concatenate(coords_1)
         connections = np.ones_like(coords_0, dtype=bool)
+        n_connections = len(coords_0)  # noqa: F841
 
-        connections = coo_array((connections, (coords_0, coords_1),), shape=(len(data), len(data)))
+        connections = coo_array(
+            (connections, (coords_0, coords_1),),
+            shape=(len(data), len(data)),
+        )
         del coords_0, coords_1
         connections = connections.tocsr()
 
@@ -1063,7 +1125,7 @@ class AlertBERT(AbstractDatasetGroupingModel):
         if remainder:
             assert len(data) - (i + 1) * self.readout == remainder
             batch = self.collate_fn(
-                [data[ (i + 1) * self.readout - self.padding : len(data) + self.padding]]
+                [data[(i + 1) * self.readout - self.padding : len(data) + self.padding]]
             )
             batch = self.model(batch)
             embeddings.append(
