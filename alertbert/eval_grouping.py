@@ -587,7 +587,7 @@ if __name__ == "__main__":
     from alertbert.utils import get_device, log_to_stdout
 
     path = "saved_models"
-    aitads_a_config = "original"  # ["original", "simultaneous-attacks", "more-noise-1", "more-noise-2", "more-noise-6", "more-noise-11"]
+    aitads_a_config = "original"  # ["original", "simul-attacks", "more-noise-1", "more-noise-2", "more-noise-6", "more-noise-11"]
 
     log_to_stdout()
     logging.info(f"Loading data config {aitads_a_config} ...")

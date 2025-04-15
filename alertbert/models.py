@@ -16,6 +16,7 @@ from torch import nn
 
 from alertbert.aitads import AlertDataset
 from alertbert.preprocessing import BaseSequenceCollate, Vocabulary
+from alertbert.train_mlm import MaskedLangModelParams
 
 """This module contains classes defining masked language models and utilities for their 
 use implemented in PyTorch."""
@@ -424,7 +425,7 @@ class MaskedLanguageModel(nn.ModuleDict):
     """Module that represents a masked language model.
 
     Args:
-        params (dict[str, Any]): Dictionary of model parameters, for more information see the documentation in `train_mlm.py`.
+        params (Params): Dictionary of model parameters, for more information see the documentation in `train_mlm.py`.
         vocabs (dict[str, Vocabulary]): Dictionary of feature vocabularies.
 
     Methods:
@@ -434,7 +435,7 @@ class MaskedLanguageModel(nn.ModuleDict):
 
     def __init__(
         self,
-        params: dict[str, Any],
+        params: MaskedLangModelParams,
         vocabs: dict[str, Vocabulary],
     ) -> None:
         super().__init__(
@@ -442,7 +443,7 @@ class MaskedLanguageModel(nn.ModuleDict):
                 "embedding": MaskedLangModelEmbeddingLayer(
                     features=params["features"],
                     encoding=(
-                        params["encoding"] if params["enc_type"] == "learned" else None
+                        params["encoding"] if params["encoding_type"] == "learned" else None
                     ),
                     vocabs=vocabs,
                     dim=params["d_model"],
@@ -451,15 +452,15 @@ class MaskedLanguageModel(nn.ModuleDict):
                 ),
                 "encoder": MaskedLangModelEncoder(
                     d_model=params["d_model"],
-                    nhead=params["nhead"],
+                    nhead=params["n_heads"],
                     num_layers=params["num_layers"],
                     dim_feedforward=params["dim_feedforward"],
                     activation=params["activation"],
                     gated_activation=params["gated_activation"],
-                    rotary_pos_enc=params["enc_type"] == "rotary",
+                    rotary_pos_enc=params["encoding_type"] == "rotary",
                     rotary_pos_enc_freqs=(
                         params["encoding_freqs"]
-                        if params["enc_type"] == "rotary"
+                        if params["encoding_type"] == "rotary"
                         else None
                     ),
                     biases=params["biases"],
@@ -473,7 +474,7 @@ class MaskedLanguageModel(nn.ModuleDict):
             }
         )
 
-        self.rotary_pos_enc = params["enc_type"] == "rotary"
+        self.rotary_pos_enc = params["encoding_type"] == "rotary"
         self.encoding = params["encoding"]
 
         # tie weigths of the embedding layer and the output layer

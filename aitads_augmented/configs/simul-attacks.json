@@ -1,0 +1,256 @@
+{
+    "name": "simul-attacks",
+    "start_time": "2025-02-10T00:00:00+01:00",
+    "train": [
+        [
+            {
+                "noise": ["shaw-1"],
+                "attacks": []
+            },
+            {
+                "noise": ["shaw-2"],
+                "attacks": []
+            },
+            {
+                "noise": ["shaw-3"],
+                "attacks": []
+            },
+            {
+                "noise": ["shaw-4"],
+                "attacks": [
+                    ["shaw-crack_passwords",        "14:06:01"], 
+                    ["shaw-wpscan",                 "14:38:52"],
+                    ["shaw-dns_scan",               "14:38:55"], 
+                    ["shaw-webshell_cmd",           "14:38:56"], 
+                    ["shaw-dirb",                   "14:39:00"], 
+                    ["shaw-dnsteal_end",            "14:39:05"], 
+                    ["shaw-attacker_change_user",   "14:39:07"], 
+                    ["shaw-escalated_sudo_command", "14:39:10"]
+                ],
+                "_comment": "4s overlap of wpscan and dirb, mixed order of remaining attacks, some attacks placed in scans, others placed overlapping outside of scans"
+            },
+            {
+                "noise": ["shaw-5"],
+                "attacks": []
+            }
+        ],
+        [
+            {
+                "noise": ["wardbeck-1"],
+                "attacks": []
+            },
+            {
+                "noise": ["wardbeck-2"],
+                "attacks": []
+            },
+            {
+                "noise": ["wardbeck-3"],
+                "attacks": []
+            },
+            {
+                "noise": ["wardbeck-4"],
+                "attacks": [
+                    ["wardbeck-wpscan",                 "12:11:29"], 
+                    ["wardbeck-attacker_change_user",   "12:11:30"], 
+                    ["wardbeck-webshell_cmd",           "12:11:31"], 
+                    ["wardbeck-crack_passwords",        "12:11:34"],
+                    ["wardbeck-service_scan",           "12:11:35"], 
+                    ["wardbeck-dirb",                   "12:11:49"], 
+                    ["wardbeck-escalated_sudo_command", "12:11:50"],
+                    ["wardbeck-dnsteal_start",          "12:11:58"], 
+                    ["wardbeck-dnsteal_end",            "12:12:00"]
+                ],
+                "_comment": "no overlap of wpscan and dirb, mixed order of remaining attacks, most attacks placed in scans"
+            }
+        ],
+        [
+            {
+                "noise": ["wheeler-1"],
+                "attacks": []
+            },
+            {
+                "noise": ["wheeler-2"],
+                "attacks": []
+            },
+            {
+                "noise": ["wheeler-3"],
+                "attacks": []
+            },
+            {
+                "noise": ["wheeler-4"],
+                "attacks": [
+                    ["wheeler-dirb",                   "07:40:00"], 
+                    ["wheeler-escalated_sudo_command", "07:41:17"],
+                    ["wheeler-attacker_change_user",   "07:44:13"], 
+                    ["wheeler-webshell_cmd",           "07:46:31"], 
+                    ["wheeler-dnsteal_start",          "07:46:52"], 
+                    ["wheeler-service_scan",           "07:47:20"], 
+                    ["wheeler-dnsteal_active",         "07:53:46"], 
+                    ["wheeler-dnsteal_active",         "07:54:04"], 
+                    ["wheeler-wpscan",                 "07:56:09"], 
+                    ["wheeler-dnsteal_active",         "07:56:28"], 
+                    ["wheeler-dnsteal_end",            "07:56:35"]
+                ],
+                "_comment": "12s overlap of dirb and wpscan, inverted order in time of remaining attacks and placed in dirb, except for dnsteal which is scattered throughout the scans"
+            }
+        ],
+        [
+            {
+                "noise": ["wilson-1"],
+                "attacks": []
+            },
+            {
+                "noise": ["wilson-2"],
+                "attacks": []
+            },
+            {
+                "noise": ["wilson-3"],
+                "attacks": []
+            },
+            {
+                "noise": ["wilson-4"],
+                "attacks": [
+                    ["wilson-dirb",                   "11:00:00"], 
+                    ["wilson-dnsteal_start",          "11:00:05"], 
+                    ["wilson-dnsteal_active",         "11:00:36"],
+                    ["wilson-service_scan",           "11:03:10"], 
+                    ["wilson-webshell_cmd",           "11:05:59"], 
+                    ["wilson-dnsteal_active",         "11:06:14"],
+                    ["wilson-crack_passwords",        "11:10:02"], 
+                    ["wilson-attacker_change_user",   "11:10:50"], 
+                    ["wilson-dnsteal_active",         "11:12:08"],
+                    ["wilson-escalated_sudo_command", "11:16:00"],
+                    ["wilson-wpscan",                 "11:19:51"], 
+                    ["wilson-dnsteal_active",         "11:20:03"],
+                    ["wilson-dnsteal_end",            "11:20:10"]
+                ],
+                "_comment": "10s overlap of dirb and wpscan, maintained order in time of remaining attacks and placed in dirb, except for dnsteal which is scattered throughout the scans"
+            },
+            {
+                "noise": ["wilson-5"],
+                "attacks": []
+            }
+        ]
+    ],
+    "val": [
+        [
+            {
+                "noise": ["harrison-1"],
+                "attacks": []
+            },
+            {
+                "noise": ["harrison-2"],
+                "attacks": []
+            },
+            {
+                "noise": ["harrison-3"],
+                "attacks": []
+            },
+            {
+                "noise": ["harrison-4"],
+                "attacks": [
+                    ["harrison-dnsteal_start",          "07:00:07"], 
+                    ["harrison-dnsteal_active",         "07:10:05"], 
+                    ["harrison-wpscan",                 "07:29:30"], 
+                    ["harrison-dirb",                   "07:30:00"], 
+                    ["harrison-dnsteal_active",         "07:33:03"],
+                    ["harrison-webshell_cmd",           "07:36:25"], 
+                    ["harrison-attacker_change_user",   "07:40:11"], 
+                    ["harrison-escalated_sudo_command", "07:47:58"], 
+                    ["harrison-crack_passwords",        "07:50:04"], 
+                    ["harrison-service_scan",           "07:55:53"], 
+                    ["harrison-dnsteal_active",         "07:59:55"],
+                    ["harrison-dnsteal_end",            "08:15:00"]
+                ],
+                "_comment": "22s overlap of scans, mixed order of remaining attacks and placed in dirb, except for dnsteal which is scattered throughout the scans"
+            }
+        ],
+        [
+            {
+                "noise": ["santos-1"],
+                "attacks": []
+            },
+            {
+                "noise": ["santos-2"],
+                "attacks": []
+            },
+            {
+                "noise": ["santos-3"],
+                "attacks": [
+                    ["santos-crack_passwords",        "11:03:25"],
+                    ["santos-dirb",                   "11:22:00"], 
+                    ["santos-webshell_cmd",           "11:22:04"], 
+                    ["santos-wpscan",                 "11:22:25"], 
+                    ["santos-service_scan",           "11:22:27"], 
+                    ["santos-online_cracking",        "11:22:32"], 
+                    ["santos-dnsteal_start",          "11:22:34"],
+                    ["santos-attacker_change_user",   "11:22:39"], 
+                    ["santos-escalated_sudo_command", "11:22:42"],
+                    ["santos-dnsteal_end",            "11:22:47"]
+                ],
+                "_comment": "no overlap of wpscan and dirb, maintained order in time of remaining attacks except for service_scan and crack_passwords"
+            }
+        ]
+    ],
+    "test": [
+        [
+            {
+                "noise": ["fox-1"],
+                "attacks": []
+            },
+            {
+                "noise": ["fox-2"],
+                "attacks": []
+            },
+            {
+                "noise": ["fox-3"],
+                "attacks": [
+                    ["fox-wpscan",                 "12:18:10"], 
+                    ["fox-dnsteal_start",          "12:18:13"], 
+                    ["fox-escalated_sudo_command", "12:18:19"], 
+                    ["fox-dirb",                   "12:18:30"], 
+                    ["fox-attacker_change_user",   "13:20:31"], 
+                    ["fox-crack_passwords",        "12:25:54"], 
+                    ["fox-online_cracking",        "12:29:06"], 
+                    ["fox-webshell_cmd",           "12:32:25"], 
+                    ["fox-dnsteal_active",         "12:34:01"], 
+                    ["fox-dnsteal_active",         "12:36:07"],
+                    ["fox-dnsteal_end",            "12:36:47"],
+                    ["fox-service_scan",           "12:37:06"]
+                ],
+                "_comment": "6s overlap of wpscan and dirb, inverted order in time of remaining attacks and placed mostly in dirb, except for dnsteal which is scattered throughout the scans"
+            },
+            {
+                "noise": ["fox-4"],
+                "attacks": []
+            }
+        ],
+        [
+            {
+                "noise": ["russellmitchell-1"],
+                "attacks": []
+            },
+            {
+                "noise": ["russellmitchell-2"],
+                "attacks": []
+            },
+            {
+                "noise": ["russellmitchell-3"],
+                "attacks": [
+                    ["russellmitchell-service_scan",           "03:57:00"], 
+                    ["russellmitchell-attacker_change_user",   "03:57:03"], 
+                    ["russellmitchell-dnsteal_start",          "03:57:09"], 
+                    ["russellmitchell-dnsteal_active",         "03:57:17"],
+                    ["russellmitchell-dirb",                   "03:57:30"], 
+                    ["russellmitchell-dnsteal_active",         "03:57:35"],
+                    ["russellmitchell-webshell_cmd",           "03:57:39"], 
+                    ["russellmitchell-wpscan",                 "03:58:00"],
+                    ["russellmitchell-crack_passwords",        "03:58:09"], 
+                    ["russellmitchell-escalated_sudo_command", "03:58:15"], 
+                    ["russellmitchell-dnsteal_end",            "03:58:19"]
+                ],
+                "_comment": "no overlap of wpscan and dirb, mixed order of remaining attacks, most attacks placed in scans, dnsteal scattered throughout the scans"
+            }
+        ]
+    ]
+}

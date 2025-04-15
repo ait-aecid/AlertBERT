@@ -84,3 +84,8 @@ class OptimWrapper:
     def eval(self) -> None:
         if hasattr(self.optimizer, "eval"):
             self.optimizer.eval()
+
+def print_to_log(message: str) -> None:
+    """Prints a message to the log file."""
+    with open("saved_models/results.log", "a") as log_file:
+        print(f"\n# {message}", file=log_file)

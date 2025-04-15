@@ -102,7 +102,7 @@ Using the "host" feature is fine though as it is unified across scenarios.
 #### original
 Recreates the original AIT-ADS with the augmented dataset class (except for the small difference that dnsteal alerts of the first days are not discarded but moved to the next days).
 
-#### simultaneous-attacks
+#### simul-attacks
 The noise, number of scenarios and days is the same as in "original", but the attacks are rearanged so that there are collisions in time of scan/scan and scan/exploit pairs.
 
 #### more-noise-1/2/6/11
@@ -125,7 +125,7 @@ In order to keep the different configurations comparable, the same changes were 
 
 | configuration | noise level | number of noise alerts | days per scenario
 |:-|-:|-:|-:|
-| original/simultaneous-attacks | 1 | 712.304 | [5,4,4,5,4,3,4,3]
+| original/simul-attacks | 1 | 712.304 | [5,4,4,5,4,3,4,3]
 | more-noise-1 | 2 | 1.424.608 | [5,4,4,5,4,3,4,3]
 | more-noise-2 | 3 | 2.136.912 | [5,4,4,5,4,3,4,3]
 | more-noise-6 | 7 | 2.205.741 | [2,2,2,2,2,1,2,1]
