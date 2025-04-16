@@ -1,18 +1,29 @@
+import logging
 import pickle
 from collections import Counter
 from collections.abc import Iterable
 from typing import Literal
 
+from debugpy import log_to
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.sparse import coo_matrix
 
-from alertbert.aitads import MultiAlertDataset
+from alertbert.aitads import AITAlertDataset, MultiAlertDataset
+from alertbert.model_eval_utils import (
+    load_data_tools,
+    load_ground_truth_label_vocabs,
+    load_models,
+    load_reports,
+)
 from alertbert.models import (
     AbstractDatasetGroupingModel,
+    AlertBERT,
     MaskedLangModelInferenceWrapper,
+    TimeDelta,
 )
 from alertbert.preprocessing import Vocabulary
+from alertbert.utils import get_device, log_to_stdout
 
 """This module contains functions for evaluating alert grouping models.
 If executed as a script, it will load a trained model and evaluate it on the training and validation sets of the specified augmentation of the AIT Alert dataset.
@@ -351,7 +362,7 @@ def save_results(
         path (str): The path to the directory where the respective model is located.
         name (str): The name of the results file.
     """
-    model_id = results["model_params"]["model"]["id"]
+    model_id = results["model_params"]["id"]
     split = results["model_params"]["data_split"]
     path = f"{path}/{model_id}/{name}_{split}_results.pkl"
     with open(path, "wb") as f:
@@ -373,6 +384,186 @@ def load_results(
     with open(path, "rb") as f:
         results = pickle.load(f)
     return results
+
+
+def get_eval_file_name(
+    grouping_model_params: dict, aitads_a_config: str, noise: bool = True
+) -> str:
+    suffix = "_noise" if noise else "_clean"
+    if grouping_model_params["id"] == "timedelta":
+        return (
+            f"timedelta_{grouping_model_params['delta']}_{aitads_a_config}"
+            + suffix
+        )
+    else:
+        return (
+            f"{len(grouping_model_params['layers'])}l_"
+            + f"{grouping_model_params['dim_reduction']}dim"
+            + f"_theta_{grouping_model_params['theta']}"
+            + f"_delta_{grouping_model_params['delta']}"
+            + f"_{aitads_a_config}"
+            + suffix
+        )
+
+
+# roc curve functions
+
+
+def compute_roc_trajectories(
+    model_id: str,
+    aitads_a_config: Literal[
+        "original",
+        "simul-attacks",
+        "more-noise-1",
+        "more-noise-2",
+        "more-noise-6",
+        "more-noise-11",
+    ],
+    deltas: list[float],
+    thetas: list[float] = None,
+    layers: tuple[str] = ("embedding", "encoder"),
+    dim_reduction: int = 2,
+    path: str = "saved_models",
+) -> None:
+    """Computes the ROC trajectories for the given model and data.
+
+    Args:
+        model_id (str): The id of the model.
+        aitads_a_config (Literal): The configuration of the AIT-ADS-A dataset.
+        deltas (list[float]): The delta values to be used for the models.
+        thetas (list[float], optional): The theta values to be used for the models. Defaults to None.
+        layers (tuple[str], optional): The layers to be used for the models. Defaults to ("embedding", "encoder").
+        dim_reduction (int, optional): The dimensionality reduction to be used for the models. Defaults to 2.
+        path (str, optional): The path to the directory where the respective model is located. Defaults to "saved_models".
+    """
+    if model_id != "timedelta":
+        assert thetas is not None, "Theta values must be provided for AlertBert models."
+        assert len(deltas) == len(thetas), (
+            "Delta and theta values must have the same length."
+        )
+    else:
+        thetas = [None] * len(deltas)
+
+    log_to_stdout()
+
+    not_found_results = []
+
+    for delta, theta in zip(deltas, thetas):
+        grouping_model_params = get_grouping_model_params(
+            model_id,
+            delta,
+            theta,
+            layers,
+            dim_reduction,
+            data_split="train",
+        )
+        file_name = get_eval_file_name(
+            grouping_model_params, aitads_a_config, noise=True
+        )
+        logging.info(f"Searching for {file_name}")
+        try:
+            load_results(path=path, model_id=model_id, name=file_name, split="train")
+            logging.info("Found!")
+        except FileNotFoundError:
+            logging.info("File not found, will compute results ...")
+            not_found_results.append([delta, theta])
+
+    deltas = [i[0] for i in not_found_results]
+    thetas = [i[1] for i in not_found_results]
+    main(
+        model_ids=[model_id],
+        aitads_a_config=aitads_a_config,
+        deltas=deltas,
+        thetas=thetas,
+        layers=layers,
+        dim_reduction=dim_reduction,
+        path=path,
+    )
+
+    logging.info("All results computed!")
+
+
+def roc(
+    model_class: type[AbstractDatasetGroupingModel],
+    trajectories: dict[str, np.ndarray],
+    target: str = "hierarchical_event_label",
+    highlight_result=None,
+    label_vocabs: dict[str, Vocabulary] = None,
+):
+    target_vocab = label_vocabs[target]
+    all_labels_str = get_str_labels(target_vocab)
+    all_labels_int = get_labels_int(all_labels_str, target_vocab)
+    label_range = (all_labels_int[0], all_labels_int[-1])
+
+    l = [len(t) for t in trajectories.values()]
+    assert all([x == l[0] for x in l]), "All trajectories must have the same length"
+    l = l[0]
+
+    result_trajectory = []
+
+    for i in range(l):
+        model = model_class(**{k: v[i] for k, v in trajectories.items()})
+        result_trajectory.append(eval_alert_grouping(model, target))
+
+    fig, ax = plt.subplots(1, 1, figsize=(7, 7))
+
+    cmap = plt.get_cmap("viridis")
+
+    ax.set_box_aspect(1)
+    ax.grid()
+    ax.set_xlim(-0.01, 1.01)
+    ax.set_ylim(-0.01, 1.01)
+    ax.set_title(f"{model_class.__name__} ROC Curve")
+    ax.set_xlabel("True Negative Rate")
+    ax.set_ylabel("True Positive Rate")
+
+    for i, label in enumerate(all_labels_str):
+        tpr = []
+        tnr = []
+        for result in result_trajectory:
+            tpr.append(result["summary"][label]["recall"])
+            tnr.append(result["summary"][label]["tnr"])
+
+        ax.plot(
+            tnr,
+            tpr,
+            label=label,
+            color=cmap(
+                (all_labels_int[i] - label_range[0]) / (label_range[1] - label_range[0])
+            ),
+            alpha=0.5,
+        )
+
+        if highlight_result:
+            ax.scatter(
+                highlight_result["summary"][label]["tnr"],
+                highlight_result["summary"][label]["recall"],
+                color=cmap(
+                    (all_labels_int[i] - label_range[0])
+                    / (label_range[1] - label_range[0])
+                ),
+                marker="x",
+            )
+
+    tpr = []
+    tnr = []
+    for result in result_trajectory:
+        tpr.append(result["summary"]["macro"]["recall"])
+        tnr.append(result["summary"]["macro"]["tnr"])
+    ax.plot(tnr, tpr, label="macro", color="r")
+
+    if highlight_result:
+        ax.scatter(
+            highlight_result["summary"]["macro"]["tnr"],
+            highlight_result["summary"]["macro"]["recall"],
+            color="r",
+            marker="x",
+        )
+
+    ax.legend()
+
+    plt.tight_layout()
+    plt.show()
 
 
 # result plotting functions
@@ -444,8 +635,8 @@ def model_comparison_plot(
     used_metrics = get_metrics(exclude_raw_metrics)
     fig, all_axs = get_scatter_plot_figure(
         used_metrics,
-        train_results_x["model_params"]["model"]["id"],
-        train_results_y["model_params"]["model"]["id"],
+        train_results_x["model_params"]["id"],
+        train_results_y["model_params"]["id"],
     )
 
     for j, col in enumerate(plot_cols):
@@ -573,21 +764,190 @@ def pprint_eval_diff(
             )
 
 
-if __name__ == "__main__":
-    import logging
+# main functions
 
-    from alertbert.aitads import AITAlertDataset
-    from alertbert.model_eval_utils import (
-        load_data_tools,
-        load_ground_truth_label_vocabs,
-        load_models,
-        load_reports,
+
+def get_grouping_model_params(
+    model_id: str,
+    delta: float,
+    theta: float = None,
+    layers: tuple[str] = ("embedding", "encoder"),
+    dim_reduction: int = 2,
+    data_split: str = None,
+) -> dict:
+    """Returns the parameters for the grouping model.
+
+    Args:
+        model_id (str): The id of the model.
+        delta (float): The delta value for the model.
+        theta (float, optional): The theta value for the model. Defaults to None.
+        layers (tuple[str], optional): The layers to be used for the model. Defaults to ("embedding", "encoder").
+        dim_reduction (int, optional): The dimensionality reduction to be used for the model. Defaults to 2.
+        data_split (str, optional): The data split to be used for the model. Defaults to None.
+    """
+    if model_id == "timedelta":
+        return {
+            "id": "timedelta",
+            "delta": delta,
+            "data_split": data_split,
+        }
+    elif model_id.startswith("mlm"):
+        return {
+            "id": model_id,
+            "layers": layers,
+            "theta": theta,
+            "delta": delta,
+            "dim_reduction": dim_reduction,
+            "data_split": data_split,
+        }
+    else:
+        raise ValueError(f"Encountered invalid model id: {model_id}.")
+
+
+def compute_all_eval_results(
+    grouping_model: AbstractDatasetGroupingModel,
+    label_vocabs: dict,
+    train_data: AITAlertDataset,
+    val_data: AITAlertDataset,
+) -> tuple[dict, dict, dict, dict]:
+    """Computes all evaluation results for the given model and data.
+
+    Args:
+        grouping_model (AbstractDatasetGroupingModel): The alert grouping model to be evaluated.
+        label_vocabs (dict): The vocabularies containing the target labels.
+        train_data (AITAlertDataset): The training dataset to be evaluated.
+        val_data (AITAlertDataset): The validation dataset to be evaluated.
+    """
+    train_stats_noise, cont_matrices = eval_alert_grouping(
+        model=grouping_model,
+        target_vocab=label_vocabs["hierarchical_event_label"],
+        data=train_data,
+        ignore_excluded_macro_label=False,
     )
-    from alertbert.models import AlertBERT, TimeDelta
-    from alertbert.utils import get_device, log_to_stdout
+    train_stats_clean, _ = eval_alert_grouping(
+        target_vocab=label_vocabs["hierarchical_event_label"],
+        contingency_matrices=cont_matrices,
+    )
+    val_stats_noise, cont_matrices = eval_alert_grouping(
+        model=grouping_model,
+        target_vocab=label_vocabs["hierarchical_event_label"],
+        data=val_data,
+        ignore_excluded_macro_label=False,
+    )
+    val_stats_clean, _ = eval_alert_grouping(
+        target_vocab=label_vocabs["hierarchical_event_label"],
+        contingency_matrices=cont_matrices,
+    )
+    return (
+        train_stats_noise,
+        val_stats_noise,
+        train_stats_clean,
+        val_stats_clean,
+    )
 
-    path = "saved_models"
-    aitads_a_config = "original"  # ["original", "simul-attacks", "more-noise-1", "more-noise-2", "more-noise-6", "more-noise-11"]
+
+def save_all_eval_results(
+    train_stats_noise: dict,
+    val_stats_noise: dict,
+    train_stats_clean: dict,
+    val_stats_clean: dict,
+    grouping_model_params: dict,
+    aitads_a_config: str,
+    path: str,
+) -> None:
+    """Saves all evaluation results to pickle files.
+
+    Args:
+        train_stats_noise (dict): The training results dict for the noisy results.
+        val_stats_noise (dict): The validation results dict for the noisy results.
+        train_stats_clean (dict): The training results dict for the clean results.
+        val_stats_clean (dict): The validation results dict for the clean results.
+        aitads_a_config (str): The configuration of the AIT-ADS-A dataset.
+        path (str): The path to the directory where the respective model is located.
+    """
+    train_stats_noise["model_params"] = grouping_model_params
+    train_stats_noise["model_params"]["data_split"] = "train"
+    save_results(
+        train_stats_noise,
+        path,
+        get_eval_file_name(grouping_model_params, aitads_a_config, noise=True),
+    )
+
+    val_stats_noise["model_params"] = grouping_model_params
+    val_stats_noise["model_params"]["data_split"] = "val"
+    save_results(
+        val_stats_noise,
+        path,
+        get_eval_file_name(grouping_model_params, aitads_a_config, noise=True),
+    )
+
+    train_stats_clean["model_params"] = grouping_model_params
+    train_stats_clean["model_params"]["data_split"] = "train"
+    save_results(
+        train_stats_clean,
+        path,
+        get_eval_file_name(grouping_model_params, aitads_a_config, noise=False),
+    )
+
+    val_stats_clean["model_params"] = grouping_model_params
+    val_stats_clean["model_params"]["data_split"] = "val"
+    save_results(
+        val_stats_clean,
+        path,
+        get_eval_file_name(grouping_model_params, aitads_a_config, noise=False),
+    )
+
+
+def main(
+    model_ids: list[str],
+    aitads_a_config: Literal[
+        "original",
+        "simul-attacks",
+        "more-noise-1",
+        "more-noise-2",
+        "more-noise-6",
+        "more-noise-11",
+    ],
+    deltas: list[float],
+    thetas: list[float] = None,
+    layers: tuple[str] = ("embedding", "encoder"),
+    dim_reduction: int = 2,
+    path: str = "saved_models",
+) -> None:
+    """Main function for evaluating alert grouping models.
+    Loads the specified models and evaluates them on the training and validation sets of the specified augmentation of the AIT Alert dataset.
+    It is possible to either evaluate multiple models with the same delta and theta values or to evaluate a single model with different delta and theta values.
+    TimeDelta models can only be evaluated in the single model case.
+
+    Args:
+        model_ids (list[str]): The ids of the models to be evaluated.
+        aitads_a_config (Literal): The configuration of the AIT-ADS-A dataset.
+        deltas (list[float]): The delta values to be used for the models.
+        thetas (list[float], optional): The theta values to be used for the models. Defaults to None.
+        layers (tuple[str], optional): The layers to be used for the models. Defaults to ("embedding", "encoder").
+        dim_reduction (int, optional): The dimensionality reduction to be used for the models. Defaults to 2.
+        path (str, optional): The path to the directory where the respective model is located. Defaults to "saved_models".
+    """
+    if len(model_ids) == 1 and model_ids[0] == "timedelta":
+        timedelta = True
+    elif "timedelta" in model_ids:
+        raise ValueError(
+            "TimeDelta models cannot be evaluated together with AlertBert models."
+        )
+    else:
+        timedelta = False
+        assert thetas is not None, "Theta values must be provided for AlertBert models."
+
+    if len(model_ids) > 1:
+        assert len(deltas) == 1, "Only one delta value can be used for multiple models."
+        assert len(thetas) == 1, "Only one theta value can be used for multiple models."
+        deltas = deltas * len(model_ids)
+        thetas = thetas * len(model_ids)
+    else:
+        if not timedelta:
+            assert len(deltas) == len(thetas), (
+                "Delta and theta values must have the same length."
+            )
 
     log_to_stdout()
     logging.info(f"Loading data config {aitads_a_config} ...")
@@ -595,29 +955,11 @@ if __name__ == "__main__":
     val_data = AITAlertDataset(split="val", configuration=aitads_a_config)
     label_vocabs = load_ground_truth_label_vocabs(path, aitads_a_config)
 
-    # execute the following block of code to compute results for MLM based models
-    if True:
-        logging.info("Evaluating MLMs...")
-
-        # define dim reduction and clustering parameters
-        grouping_model_params = {
-            "model": {
-                "id": None,  # to be left blank here
-                "layers": ["embedding", "encoder"],
-                "theta": 6.0,
-                "delta": 2.0,
-                "dim_reduction": 2,
-            },
-            "data_split": None,  # to be left blank here
-        }
-
-        # models to be used
-        model_ids = [
-            "mlm_1l_4h_zero_0k",
-        ]
-
+    if timedelta:
+        logging.info("Evaluating TimeDelta models...")
+    else:
+        logging.info("Evaluating AlertBert models...")
         reports, model_param_dicts = load_reports(model_ids, path)
-
         device = get_device("cpu")
 
         logging.info("Loading data tools...")
@@ -626,175 +968,82 @@ if __name__ == "__main__":
         logging.info("Loading models...")
         models = load_models(model_param_dicts, path, data_tools, device)
 
-        logging.info("Setup complete.")
+    logging.info("Setup complete.")
 
-        for key, model in models.items():
-            logging.info(f"Evaluating model {key} ...")
-
-            # set up model
-            grouping_model = AlertBERT(
-                model=MaskedLangModelInferenceWrapper(
-                    model, grouping_model_params["model"]["layers"]
-                ),
-                collate_fn=data_tools[key]["inf_coll_fn"],
-                dim_reduction=grouping_model_params["model"]["dim_reduction"],
-                delta=grouping_model_params["model"]["delta"],
-                theta=grouping_model_params["model"]["theta"],
-            )
-
-            # evaluate model
-            train_stats_noise, cont_matrices = eval_alert_grouping(
-                model=grouping_model,
-                target_vocab=label_vocabs["hierarchical_event_label"],
-                data=train_data,
-                ignore_excluded_macro_label=False,
-            )
-            train_stats_clean, _ = eval_alert_grouping(
-                target_vocab=label_vocabs["hierarchical_event_label"],
-                contingency_matrices=cont_matrices,
-            )
-            val_stats_noise, cont_matrices = eval_alert_grouping(
-                model=grouping_model,
-                target_vocab=label_vocabs["hierarchical_event_label"],
-                data=val_data,
-                ignore_excluded_macro_label=False,
-            )
-            val_stats_clean, _ = eval_alert_grouping(
-                target_vocab=label_vocabs["hierarchical_event_label"],
-                contingency_matrices=cont_matrices,
-            )
-
-            # add model params to results and save results
-            # ATTENTION: The grouping_model_params dict is modified in place, so the order of operations is important
-            grouping_model_params["model"]["id"] = key
-
-            suffix = "_noise"
-
-            train_stats_noise["model_params"] = grouping_model_params
-            train_stats_noise["model_params"]["data_split"] = "train"
-            save_results(
-                train_stats_noise,
-                path,
-                f"{grouping_model_params['model']['dim_reduction']}dim"
-                + f"_theta_{grouping_model_params['model']['theta']}"
-                + f"_delta_{grouping_model_params['model']['delta']}"
-                + f"_{aitads_a_config}"
-                + suffix,
-            )
-
-            val_stats_noise["model_params"] = grouping_model_params
-            val_stats_noise["model_params"]["data_split"] = "val"
-            save_results(
-                val_stats_noise,
-                path,
-                f"{grouping_model_params['model']['dim_reduction']}dim"
-                + f"_theta_{grouping_model_params['model']['theta']}"
-                + f"_delta_{grouping_model_params['model']['delta']}"
-                + f"_{aitads_a_config}"
-                + suffix,
-            )
-
-            suffix = "_clean"
-
-            train_stats_clean["model_params"] = grouping_model_params
-            train_stats_clean["model_params"]["data_split"] = "train"
-            save_results(
-                train_stats_clean,
-                path,
-                f"{grouping_model_params['model']['dim_reduction']}dim"
-                + f"_theta_{grouping_model_params['model']['theta']}"
-                + f"_delta_{grouping_model_params['model']['delta']}"
-                + f"_{aitads_a_config}"
-                + suffix,
-            )
-
-            val_stats_clean["model_params"] = grouping_model_params
-            val_stats_clean["model_params"]["data_split"] = "val"
-            save_results(
-                val_stats_clean,
-                path,
-                f"{grouping_model_params['model']['dim_reduction']}dim"
-                + f"_theta_{grouping_model_params['model']['theta']}"
-                + f"_delta_{grouping_model_params['model']['delta']}"
-                + f"_{aitads_a_config}"
-                + suffix,
-            )
-    # execute the following block of code to compute results for time delta models
-    if False:
-        logging.info("Evaluating TimeDelta models...")
-
-        # define parameters
-        grouping_model_params = {
-            "model": {
-                "id": "timedelta",
-                "delta": None,  # to be left blank here
-            },
-            "data_split": None,  # to be left blank here
-        }
-
-        # deltas to be used
-        deltas = [1, 2, 4]
-
-        logging.info("Setup complete.")
-
-        for delta in deltas:
-            logging.info(f"Evaluating delta = {delta} ...")
-
-            # set up model
-            grouping_model = TimeDelta(delta=delta)
+    for key in model_ids:
+        for i in range(len(deltas)):
+            if timedelta:
+                grouping_model_params = get_grouping_model_params(
+                    model_id="timedelta",
+                    delta=deltas[i],
+                )
+                logging.info(f"Evaluating delta = {deltas[i]} ...")
+                grouping_model = TimeDelta(delta=deltas[i])
+            else:
+                logging.info(f"Evaluating model {key} ...")
+                grouping_model_params = get_grouping_model_params(
+                    model_id=key,
+                    delta=deltas[i],
+                    theta=thetas[i],
+                    layers=layers,
+                    dim_reduction=dim_reduction,
+                )
+                grouping_model = AlertBERT(
+                    model=MaskedLangModelInferenceWrapper(models[key], layers),
+                    collate_fn=data_tools[key]["inf_coll_fn"],
+                    dim_reduction=dim_reduction,
+                    delta=deltas[i],
+                    theta=thetas[i],
+                )
 
             # evaluate model
-            train_stats_noise, cont_matrices = eval_alert_grouping(
-                model=grouping_model,
-                target_vocab=label_vocabs["hierarchical_event_label"],
-                data=train_data,
-                ignore_excluded_macro_label=False,
-            )
-            train_stats_clean, _ = eval_alert_grouping(
-                target_vocab=label_vocabs["hierarchical_event_label"],
-                contingency_matrices=cont_matrices,
-            )
-            val_stats_noise, cont_matrices = eval_alert_grouping(
-                model=grouping_model,
-                target_vocab=label_vocabs["hierarchical_event_label"],
-                data=val_data,
-                ignore_excluded_macro_label=False,
-            )
-            val_stats_clean, _ = eval_alert_grouping(
-                target_vocab=label_vocabs["hierarchical_event_label"],
-                contingency_matrices=cont_matrices,
+            results = compute_all_eval_results(
+                grouping_model, label_vocabs, train_data, val_data
             )
 
-            # add model params to results and save results
-            # ATTENTION: The grouping_model_params dict is modified in place, so the order of operations is important
-            grouping_model_params["model"]["delta"] = delta
-
-            suffix = "_noise"
-
-            train_stats_noise["model_params"] = grouping_model_params
-            train_stats_noise["model_params"]["data_split"] = "train"
-            save_results(
-                train_stats_noise, path, f"timedelta_{delta}_{aitads_a_config}" + suffix
-            )
-
-            val_stats_noise["model_params"] = grouping_model_params
-            val_stats_noise["model_params"]["data_split"] = "val"
-            save_results(
-                val_stats_noise, path, f"timedelta_{delta}_{aitads_a_config}" + suffix
-            )
-
-            suffix = "_clean"
-
-            train_stats_clean["model_params"] = grouping_model_params
-            train_stats_clean["model_params"]["data_split"] = "train"
-            save_results(
-                train_stats_clean, path, f"timedelta_{delta}_{aitads_a_config}" + suffix
-            )
-
-            val_stats_clean["model_params"] = grouping_model_params
-            val_stats_clean["model_params"]["data_split"] = "val"
-            save_results(
-                val_stats_clean, path, f"timedelta_{delta}_{aitads_a_config}" + suffix
+            # save results
+            save_all_eval_results(
+                *results,
+                grouping_model_params,
+                aitads_a_config,
+                path,
             )
 
     logging.info("Done.")
+
+
+if __name__ == "__main__":
+    import gc
+
+    # main(model_ids=["mlm_1l_4h_16d_zero_0k"], aitads_a_config="more-noise-11", deltas=[2.0], thetas=[6.0])
+
+    for config in [
+        "original",
+        "simul-attacks",
+        "more-noise-1",
+        "more-noise-2",
+        "more-noise-6",
+        "more-noise-11",
+    ]:
+        compute_roc_trajectories(
+            model_id="timedelta",
+            aitads_a_config=config,
+            deltas=[0.0625, 0.125, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0, 128.0, 256.0],
+        )
+        gc.collect()
+
+        compute_roc_trajectories(
+            model_id="mlm_1l_4h_16d_zero_0k",
+            aitads_a_config=config,
+            deltas=[2.0],
+            thetas=[3.0, 6.0, 12.0, 24.0, 48.0],
+        )
+        gc.collect()
+
+        compute_roc_trajectories(
+            model_id="mlm_1l_4h_16d_zero_0k",
+            aitads_a_config=config,
+            deltas=[4.0],
+            thetas=[3.0, 6.0, 12.0, 24.0, 48.0],
+        )
+        gc.collect()

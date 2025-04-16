@@ -333,7 +333,7 @@ if __name__ == "__main__":
         import sys
 
         configs = sys.argv[1:]
-        # configs = ["original", "more-noise", "simul-attacks"]
+        # configs = ["original", "more-noise-1", "more-noise-2", "more-noise-6", "more-noise-11", "simul-attacks"]
         for c in configs:
             print("Loading data...")
             data = AITAlertDataset(split="all", configuration=c)
