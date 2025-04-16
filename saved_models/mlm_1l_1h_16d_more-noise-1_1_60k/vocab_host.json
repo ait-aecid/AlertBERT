@@ -1,0 +1,11 @@
+{
+    "intranet_server": 878921,
+    "webserver": 233320,
+    "inet-firewall": 186724,
+    "mail": 145066,
+    "vpn": 144732,
+    "inet-dns": 3542,
+    "cloud_share": 820,
+    "internal_share": 488,
+    "monitoring": 125
+}

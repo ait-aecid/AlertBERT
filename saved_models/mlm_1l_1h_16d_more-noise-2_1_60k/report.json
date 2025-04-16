@@ -1,0 +1,103 @@
+{
+    "model": "mlm_1l_1h_16d_more-noise-2_1_60k",
+    "timestamp": "2025-04-16 12:08:50.783306",
+    "epochs": 1790,
+    "training": {
+        "short": {
+            "loss": 0.3817712857421919,
+            "accuracy": 0.8470264107483829,
+            "top_2_accuracy": 0.964486057674889,
+            "top_3_accuracy": 0.9908320530481323,
+            "matthews_corrcoef": 0.8028300366777619,
+            "macro_precision": 0.826572108068034,
+            "macro_recall": 0.4439193817043595,
+            "macro_f1": 0.5014931859092037
+        },
+        "host": {
+            "loss": 0.11244109299594843,
+            "accuracy": 0.9462773571829974,
+            "top_2_accuracy": 0.9960539207561918,
+            "top_3_accuracy": 0.9982485852623691,
+            "matthews_corrcoef": 0.929798100693787,
+            "macro_precision": 0.8613567487109008,
+            "macro_recall": 0.8190118093187804,
+            "macro_f1": 0.8154221838164745
+        }
+    },
+    "validation": {
+        "short": {
+            "loss": 0.6407432014046315,
+            "accuracy": 0.7440901278287616,
+            "top_2_accuracy": 0.8575078952508862,
+            "top_3_accuracy": 0.9457954459426495,
+            "matthews_corrcoef": 0.6810761869668139,
+            "macro_precision": 0.6936980390532284,
+            "macro_recall": 0.4129883441357143,
+            "macro_f1": 0.42354958854753405
+        },
+        "host": {
+            "loss": 0.773038400807114,
+            "accuracy": 0.8457250686248945,
+            "top_2_accuracy": 0.8876935025753612,
+            "top_3_accuracy": 0.9183024953572466,
+            "matthews_corrcoef": 0.8048431411033994,
+            "macro_precision": 0.8145227187226058,
+            "macro_recall": 0.700501886435879,
+            "macro_f1": 0.6981598750493125
+        }
+    },
+    "params": {
+        "augment": "more-noise-2",
+        "context_size": 4096,
+        "batch_size": 16,
+        "features": [
+            "short",
+            "host"
+        ],
+        "targets": [
+            "short",
+            "host"
+        ],
+        "sampling": "index",
+        "min_freq": 10,
+        "n_heads": 1,
+        "dim_per_head": 16,
+        "num_layers": 1,
+        "feedforward_factor": 4,
+        "activation": "gelu",
+        "gated_activation": true,
+        "encoding": "raw_time",
+        "encoding_type": "rotary",
+        "rotary_max_exp": 14,
+        "rotary_cutoff": 0.75,
+        "biases": false,
+        "head_bias": true,
+        "tie_weights": true,
+        "emb_init_std": 0.25,
+        "optimizer": "adam",
+        "scheduler": "linear",
+        "lr": 0.005,
+        "warm_up_steps": 200,
+        "decay": 0.1,
+        "momentum": 0.9,
+        "gamma": null,
+        "class_balance": 2.0,
+        "target_ratio": 0.2,
+        "mask_ratio": 0.8,
+        "perturb_ratio": 0.1,
+        "path": "saved_models",
+        "log": "train",
+        "d_model": 16,
+        "dim_feedforward": 64,
+        "encoding_freqs": [
+            1.0,
+            0.29730177875068026,
+            0.08838834764831845,
+            0.026278012976678578,
+            0.0078125,
+            0.0023226701464896895
+        ],
+        "updates": 59070,
+        "id": "1l_1h_16d_more-noise-2_1"
+    }
+}

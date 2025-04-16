@@ -1,0 +1,103 @@
+{
+    "model": "mlm_1l_1h_16d_simul-attacks_1_60k",
+    "timestamp": "2025-04-16 07:56:12.296189",
+    "epochs": 2910,
+    "training": {
+        "short": {
+            "loss": 0.3519442171760449,
+            "accuracy": 0.8826604849396785,
+            "top_2_accuracy": 0.9773226349738587,
+            "top_3_accuracy": 0.994065236569447,
+            "matthews_corrcoef": 0.803305720271941,
+            "macro_precision": 0.8177703292166018,
+            "macro_recall": 0.44248075658726105,
+            "macro_f1": 0.5084558624998158
+        },
+        "host": {
+            "loss": 0.05690494100354311,
+            "accuracy": 0.9732757424501076,
+            "top_2_accuracy": 0.9982445219281998,
+            "top_3_accuracy": 0.9990694311309022,
+            "matthews_corrcoef": 0.9500179542691403,
+            "macro_precision": 0.8985316525958092,
+            "macro_recall": 0.8104975823931737,
+            "macro_f1": 0.8262621059851568
+        }
+    },
+    "validation": {
+        "short": {
+            "loss": 0.6974213352297626,
+            "accuracy": 0.8310567085602526,
+            "top_2_accuracy": 0.9221837147012968,
+            "top_3_accuracy": 0.9363570108460003,
+            "matthews_corrcoef": 0.7234073149912611,
+            "macro_precision": 0.7467040367890045,
+            "macro_recall": 0.46643316326019885,
+            "macro_f1": 0.4918544762538122
+        },
+        "host": {
+            "loss": 0.40298944117139895,
+            "accuracy": 0.9131059168668066,
+            "top_2_accuracy": 0.9553090664198358,
+            "top_3_accuracy": 0.9605198822838411,
+            "matthews_corrcoef": 0.8391608835392816,
+            "macro_precision": 0.8644868553509365,
+            "macro_recall": 0.7019224960918093,
+            "macro_f1": 0.7165240234100839
+        }
+    },
+    "params": {
+        "augment": "simul-attacks",
+        "context_size": 4096,
+        "batch_size": 16,
+        "features": [
+            "short",
+            "host"
+        ],
+        "targets": [
+            "short",
+            "host"
+        ],
+        "sampling": "index",
+        "min_freq": 10,
+        "n_heads": 1,
+        "dim_per_head": 16,
+        "num_layers": 1,
+        "feedforward_factor": 4,
+        "activation": "gelu",
+        "gated_activation": true,
+        "encoding": "raw_time",
+        "encoding_type": "rotary",
+        "rotary_max_exp": 14,
+        "rotary_cutoff": 0.75,
+        "biases": false,
+        "head_bias": true,
+        "tie_weights": true,
+        "emb_init_std": 0.25,
+        "optimizer": "adam",
+        "scheduler": "linear",
+        "lr": 0.005,
+        "warm_up_steps": 200,
+        "decay": 0.1,
+        "momentum": 0.9,
+        "gamma": null,
+        "class_balance": 2.0,
+        "target_ratio": 0.2,
+        "mask_ratio": 0.8,
+        "perturb_ratio": 0.1,
+        "path": "saved_models",
+        "log": "train",
+        "d_model": 16,
+        "dim_feedforward": 64,
+        "encoding_freqs": [
+            1.0,
+            0.29730177875068026,
+            0.08838834764831845,
+            0.026278012976678578,
+            0.0078125,
+            0.0023226701464896895
+        ],
+        "updates": 58200,
+        "id": "1l_1h_16d_simul-attacks_1"
+    }
+}

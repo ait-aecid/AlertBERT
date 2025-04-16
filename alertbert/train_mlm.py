@@ -3,7 +3,6 @@ import logging
 import os
 from datetime import datetime as dt
 from math import ceil, floor
-from typing import Literal
 
 import torch
 from torch.utils.data import DataLoader
@@ -16,6 +15,7 @@ from alertbert.aitads import (
 from alertbert.eval_mlm import classification_report, eval_masked_lang_model
 from alertbert.models import (
     MaskedLangModelEvalWrapper,
+    MaskedLangModelParams,
     MaskedLangModelTrainWrapper,
     MaskedLanguageModel,
     MultiTargetLoss,
@@ -28,7 +28,7 @@ from alertbert.preprocessing import (
 from alertbert.utils import OptimWrapper, get_device, log_to_stdout, set_up_log
 
 """This module contains functions for training masked language models.
-If executed as a script, it trains a masked language model on the AIT Alert dataset according to the parameters specified in a Params object.
+If executed as a script, it trains a masked language model on the AIT Alert dataset according to the parameters specified in a MaskedLangModelParams object.
 The training routine of the script is encapsulated in the main function, which takes a Params object as input and 
 serves the purpose to make the training of models possible from other scripts or modules.
 Model checkpoints are saved every 10 epochs during the specified save intervals and the best performing models 
@@ -38,167 +38,6 @@ Each model is saved in a separate directory under the specified path with the fo
 - vocab_{feature}.json: the vocabulary for each feature in the model
 - report.json: a report containing the model name, timestamp, training and validation results, and the training parameters
 """
-
-
-class BaseParams:
-    """This class is a base class for defining parameters for training a masked language model.
-    Implementations of subclasses should in ther __init__ methods pass locals() to super().__init__() to
-    save the parameters passed to them in the dictionary self.dict.
-    
-    Args:
-        - kwargs (dict): A dictionary of keyword arguments representing the parameters.
-    """
-    def __init__(self, kwargs: dict) -> None:
-        self.dict = {}.update(kwargs)
-        del self.dict["self"]
-
-    def __setitem__(self, key: str, value: object) -> None:
-        self.dict[key] = value
-
-    def __getitem__(self, key: str) -> object:
-        return self.dict[key]
-
-    def __repr__(self) -> str:
-        return self.dict.__repr__()
-
-
-class MaskedLangModelParams(BaseParams):
-    """This class defines the parameters for training a masked language model on the AIT Alert dataset.
-    Additionally to the arguments defined in the __init__ method, the following parameters are set:
-    - d_model: The dimension of the model, calculated as n_heads * dim_per_head.
-    - dim_feedforward: The dimension of the feedforward layer, calculated as n_heads * dim_per_head * feedforward_factor.
-    - encoding_freqs: The frequencies used for the rotary encoding, calculated based on the encoding type and parameters.
-    - id: The identifier for the model, generated based on the number of layers, number of heads, dimension per head, augmentation configuration and id_suffix.
-
-    Note: The save_intervals are not added to the parameters dictionary but as an attribute to the object. Instead, in the parameters
-        saved at the end of training the updates key is set to the number of updates at which the best model was saved.
-
-    Args:
-        - id_suffix (str): The identifier for the model.
-        ### data params
-        - augment (Literal | None): The configuration of AIT-ADS-A to use. If None, the original AIT Alert dataset is used. Default is "original".
-        - context_size (int): The size of the context window. Default is 4096.
-        - batch_size (int): The batch size for training. Default is 16.
-        - features (tuple[Literal["short", "host"]]): The list of features to include in the model. Default is ("short", "host").
-        - targets (tuple[Literal["short", "host"]]): The list of target variables to predict. Default is ("short", "host").
-        - sampling (Literal["index", "time"]): The sampling method to use for creating batches. The option "time" is deprecated. Default is "index".
-        - min_freq (int): The minimum frequency of a token to be included in the vocabulary. Default is 10.
-        ### model params
-        - n_heads (int): The number of attention heads in each layer of the model. Default is 4.
-        - dim_per_head (int): The dimension of each attention head in the model. Default is 16.
-        - num_layers (int): The number of layers in the model. Default is 1.
-        - feedforward_factor (int): The factor by which to multiply the dimension of the model to get the dimension
-            of the feedforward layer in the transformer encoder. Default is 4.
-        - activation (Literal["relu", "gelu"]): The activation function to use in the feedforward layer. Default is "gelu".
-        - gated_activation (bool): Whether to use a gated activation function in the feedforward layer. Default is True.
-        - encoding (Literal["position", "raw_time"]): The encoding method to use. Default is "raw_time".
-        - encoding_type (Literal["learned", "rotary"]): The type of encoding to use. The option "learned" is only available for the "position" encoding.
-            Sinusoidal encoding is currently not implemented. Default is "rotary".
-        - rotary_max_exp (int): The maximum exponent of the frequencies to use for the rotary encoding. For positional encoding this should be log2(context_size),
-            for time encoding it should be log2 of the maximal reasonable timespan in a context window, e.g. 14 for overnight context windows. Default is 14.
-            Ignored if encoding_type is "learned".
-        - rotary_cutoff (float): The cutoff ratio for the frequencies to use for the rotary encoding. Default is 0.75. Ignored if encoding_type is "learned".
-        - biases (bool): Whether to include biases in the model. Default is False.
-        - head_bias (bool): Whether to use biases in the prediction head. Default is True.
-        - tie_weights (bool): Whether to tie the weights of the input and output embeddings. Default is True.
-        - emb_init_std (float): The standard deviation of the normal distribution to use for initializing the embeddings.
-            If None, the standard deviation is set to 1/sqrt(d_model). Default is None.
-        ### training params
-        - save_intervals (list[tuple[int, int]]): A list of tuples specifying the number of model updates at which to start and end each save interval.
-        - optimizer (Literal["sgd", "adam"]): The optimizer to use for training. Default is "adam".
-        - scheduler (Literal["schedulefree", "linear"]): The scheduler to use for training. Default is "linear".
-        - lr (float): The learning rate for the optimizer. Default is 5e-3.
-        - warm_up_steps (int | float): The number of warm-up steps for the learning rate scheduler. Default is 200.
-        - decay (float): The weight decay for the optimizer. Default is 0.1.
-        - momentum (float): The momentum for the optimizer. Default is 0.9.
-        - gamma (float | None): The gamma parameter for the focal loss function, if used. If None, the cross-entropy loss function is used.
-            Focal loss is currently deprecated. Default is None.
-        - class_balance (float): Inverse softmax temperature to be applied to class frequencies to obtain class balancing weights for the loss function.
-            If 0, no class balancing is applied, positive values emphasize underrepresented classes, and negative values emphasize overrepresented classes. Default is 2.0.
-        - target_ratio (float): The ratio of target tokens to mask in the input sequence. Default is 0.2.
-        - mask_ratio (float): The ratio of target tokens to replace with the mask token in the input sequence. Default is 0.8.
-        - perturb_ratio (float): The ratio of target tokens to replace with a random token in the input sequence. Default is 0.1.
-        ### file params
-        - path (str): The path to save the model checkpoints. Default is "saved_models".
-        - log (str): The name of the log file to use. If None, logging is done to stdout. Default is "train".
-
-    """
-
-    def __init__(
-        self,
-        id_suffix: str,
-        # data
-        augment: str | None = "original",
-        context_size: int = 4096,
-        batch_size: int = 16,
-        features: tuple[str] = ("short", "host"),
-        targets: tuple[str] = ("short", "host"),
-        sampling: Literal["index", "time"] = "index",
-        min_freq: int = 10,
-        # model
-        n_heads: int = 4,
-        dim_per_head: int = 16,
-        num_layers: int = 1,
-        feedforward_factor: int = 4,
-        activation: Literal["relu", "gelu"] = "gelu",
-        gated_activation: bool = True,
-        encoding: Literal["position", "raw_time"] = "raw_time",
-        encoding_type: Literal["learned", "rotary"] = "rotary",
-        rotary_max_exp: int | None = 14,
-        rotary_cutoff: float | None = 0.75,
-        biases: bool = False,
-        head_bias: bool = True,
-        tie_weights: bool = True,
-        emb_init_std: float = None,
-        # training
-        save_intervals: tuple[tuple[int, int]] = (
-            (18000, 20000),
-            (38000, 40000),
-            (58000, 60000),
-        ),
-        optimizer: Literal["sgd", "adam"] = "adam",
-        scheduler: Literal["schedulefree", "linear"] = "linear",
-        lr: float = 5e-3,
-        warm_up_steps: int = 200,
-        decay: float = 0.1,
-        momentum: float = 0.9,
-        gamma: float | None = None,
-        class_balance: float = 2.0,
-        target_ratio: float = 0.2,
-        mask_ratio: float = 0.8,
-        perturb_ratio: float = 0.1,
-        # files
-        path: str = "saved_models",
-        log: str = "train",
-    ) -> None:
-        super().__init__(locals())
-
-        self["d_model"] = n_heads * dim_per_head
-        self["dim_feedforward"] = n_heads * dim_per_head * feedforward_factor
-
-        if encoding_type == "rotary":
-            self["encoding_freqs"] = (
-                [
-                    2 ** (-i * 2.0 / dim_per_head * rotary_max_exp)
-                    for i in range(int(dim_per_head // 2 * rotary_cutoff))
-                ]
-            )
-        elif encoding_type == "learned":
-            self["encoding_freqs"] = None
-            self["rotary_max_exp"] = None
-            self["rotary_cutoff"] = None
-        
-        if self["emb_init_std"] is None:
-            self["emb_init_std"] = (n_heads * dim_per_head) ** -0.5
-
-        self.save_intervals = save_intervals
-        del self["save_intervals"]
-        self["updates"] = save_intervals[-1][1]
-
-        self["id"] = (
-            f"{num_layers}l_{n_heads}h_{dim_per_head}d_{augment}_{id_suffix}"
-        )
-        del self["id_suffix"]
 
 
 def train_model(
