@@ -4,7 +4,6 @@ from collections import Counter
 from collections.abc import Iterable
 from typing import Literal
 
-from debugpy import log_to
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.sparse import coo_matrix
@@ -23,7 +22,7 @@ from alertbert.models import (
     TimeDelta,
 )
 from alertbert.preprocessing import Vocabulary
-from alertbert.utils import get_device, log_to_stdout
+from alertbert.utils import get_device, log_to_stdout, set_up_log
 
 """This module contains functions for evaluating alert grouping models.
 If executed as a script, it will load a trained model and evaluate it on the training and validation sets of the specified augmentation of the AIT Alert dataset.
@@ -160,6 +159,7 @@ def eval_alert_grouping(
             pred = model(scenario).squeeze()
             true = target_vocab([scenario.data[target]]).numpy().squeeze()
             contingency_matrices.append(contingency_matrix(true, pred, label_range))
+            logging.info("Finished scenario!")
 
         del pred, true
 
@@ -408,6 +408,21 @@ def get_eval_file_name(
 
 # roc curve functions
 
+timedelta_roc_traj_primary = [2.0**i for i in range(-7, 13)]
+timedelta_roc_traj_secondary = [2.0**i * 1.5 for i in range(-7, 12)]
+timedelta_roc_traj_all = timedelta_roc_traj_primary + timedelta_roc_traj_secondary
+
+alertbert_theta_roc_traj_primary = [2.0**i for i in range(1, 7)]
+alertbert_theta_roc_traj_secondary = [2.0**i for i in range(7, 11)]
+alertbert_theta_roc_traj_tertiary = [2.0**i * 1.5 for i in range(6)]
+alertbert_theta_roc_traj_quartary = [2.0**i * 1.5 for i in range(6, 10)]
+alertbert_theta_roc_traj_all = (
+    timedelta_roc_traj_primary
+    + alertbert_theta_roc_traj_secondary
+    + alertbert_theta_roc_traj_tertiary
+    + alertbert_theta_roc_traj_quartary
+)
+
 
 def compute_roc_trajectories(
     model_id: str,
@@ -438,13 +453,21 @@ def compute_roc_trajectories(
     """
     if model_id != "timedelta":
         assert thetas is not None, "Theta values must be provided for AlertBert models."
-        assert len(deltas) == len(thetas), (
-            "Delta and theta values must have the same length."
-        )
+        if len(deltas) > 1 and len(thetas) > 1:
+            assert len(deltas) == len(thetas), (
+                f"Delta and theta values must have the same length, found {len(deltas)} and {len(thetas)}."
+            )
+        elif len(deltas) == 1 and len(thetas) > 1:
+            deltas = [deltas[0]] * len(thetas)
+        elif len(deltas) > 1 and len(thetas) == 1:
+            thetas = [thetas[0]] * len(deltas)
     else:
         thetas = [None] * len(deltas)
 
-    log_to_stdout()
+    set_up_log("saved_models/eval")
+    logging.info(
+        f"Checking ROC trajectory for model {model_id} on data config {aitads_a_config} ..."
+    )
 
     not_found_results = []
 
@@ -465,105 +488,29 @@ def compute_roc_trajectories(
             load_results(path=path, model_id=model_id, name=file_name, split="train")
             logging.info("Found!")
         except FileNotFoundError:
-            logging.info("File not found, will compute results ...")
+            logging.info("Not found, will compute results ...")
             not_found_results.append([delta, theta])
 
-    deltas = [i[0] for i in not_found_results]
-    thetas = [i[1] for i in not_found_results]
-    main(
-        model_ids=[model_id],
-        aitads_a_config=aitads_a_config,
-        deltas=deltas,
-        thetas=thetas,
-        layers=layers,
-        dim_reduction=dim_reduction,
-        path=path,
-    )
-
-    logging.info("All results computed!")
-
-
-def roc(
-    model_class: type[AbstractDatasetGroupingModel],
-    trajectories: dict[str, np.ndarray],
-    target: str = "hierarchical_event_label",
-    highlight_result=None,
-    label_vocabs: dict[str, Vocabulary] = None,
-):
-    target_vocab = label_vocabs[target]
-    all_labels_str = get_str_labels(target_vocab)
-    all_labels_int = get_labels_int(all_labels_str, target_vocab)
-    label_range = (all_labels_int[0], all_labels_int[-1])
-
-    l = [len(t) for t in trajectories.values()]
-    assert all([x == l[0] for x in l]), "All trajectories must have the same length"
-    l = l[0]
-
-    result_trajectory = []
-
-    for i in range(l):
-        model = model_class(**{k: v[i] for k, v in trajectories.items()})
-        result_trajectory.append(eval_alert_grouping(model, target))
-
-    fig, ax = plt.subplots(1, 1, figsize=(7, 7))
-
-    cmap = plt.get_cmap("viridis")
-
-    ax.set_box_aspect(1)
-    ax.grid()
-    ax.set_xlim(-0.01, 1.01)
-    ax.set_ylim(-0.01, 1.01)
-    ax.set_title(f"{model_class.__name__} ROC Curve")
-    ax.set_xlabel("True Negative Rate")
-    ax.set_ylabel("True Positive Rate")
-
-    for i, label in enumerate(all_labels_str):
-        tpr = []
-        tnr = []
-        for result in result_trajectory:
-            tpr.append(result["summary"][label]["recall"])
-            tnr.append(result["summary"][label]["tnr"])
-
-        ax.plot(
-            tnr,
-            tpr,
-            label=label,
-            color=cmap(
-                (all_labels_int[i] - label_range[0]) / (label_range[1] - label_range[0])
-            ),
-            alpha=0.5,
+    if len(not_found_results) > 0:
+        logging.info(f"Found {len(not_found_results)} results to compute ...")
+        deltas = [i[0] for i in not_found_results]
+        thetas = [i[1] for i in not_found_results]
+        main(
+            model_ids=[model_id],
+            aitads_a_config=aitads_a_config,
+            deltas=deltas,
+            thetas=thetas,
+            layers=layers,
+            dim_reduction=dim_reduction,
+            path=path,
         )
+        logging.info("All results computed!")
+    else:
+        logging.info("Nothing found to compute!")
 
-        if highlight_result:
-            ax.scatter(
-                highlight_result["summary"][label]["tnr"],
-                highlight_result["summary"][label]["recall"],
-                color=cmap(
-                    (all_labels_int[i] - label_range[0])
-                    / (label_range[1] - label_range[0])
-                ),
-                marker="x",
-            )
 
-    tpr = []
-    tnr = []
-    for result in result_trajectory:
-        tpr.append(result["summary"]["macro"]["recall"])
-        tnr.append(result["summary"]["macro"]["tnr"])
-    ax.plot(tnr, tpr, label="macro", color="r")
-
-    if highlight_result:
-        ax.scatter(
-            highlight_result["summary"]["macro"]["tnr"],
-            highlight_result["summary"]["macro"]["recall"],
-            color="r",
-            marker="x",
-        )
-
-    ax.legend()
-
-    plt.tight_layout()
-    plt.show()
+def roc() -> None:
+    pass
 
 
 # result plotting functions
@@ -1017,33 +964,78 @@ if __name__ == "__main__":
 
     # main(model_ids=["mlm_1l_4h_16d_zero_0k"], aitads_a_config="more-noise-11", deltas=[2.0], thetas=[6.0])
 
-    for config in [
-        "original",
-        "simul-attacks",
-        "more-noise-1",
-        "more-noise-2",
-        "more-noise-6",
-        "more-noise-11",
-    ]:
-        compute_roc_trajectories(
-            model_id="timedelta",
-            aitads_a_config=config,
-            deltas=[0.0625, 0.125, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0, 128.0, 256.0],
-        )
-        gc.collect()
+    def eval_run_td():
 
-        compute_roc_trajectories(
-            model_id="mlm_1l_4h_16d_zero_0k",
-            aitads_a_config=config,
-            deltas=[2.0],
-            thetas=[3.0, 6.0, 12.0, 24.0, 48.0],
-        )
-        gc.collect()
+        for config in [
+            "simul-attacks",
+            "more-noise-2",
+            "more-noise-6",
+            "more-noise-11",
+            "original",
+            "more-noise-1",
+        ]:
+            compute_roc_trajectories(
+                model_id="timedelta",
+                aitads_a_config=config,
+                deltas=timedelta_roc_traj_all,
+            )
+            gc.collect()
 
-        compute_roc_trajectories(
-            model_id="mlm_1l_4h_16d_zero_0k",
-            aitads_a_config=config,
-            deltas=[4.0],
-            thetas=[3.0, 6.0, 12.0, 24.0, 48.0],
-        )
-        gc.collect()
+    eval_run_td()
+
+    def eval_run_ab(theta_traj):
+
+        for config in [
+            "simul-attacks",
+            "more-noise-2",
+            "more-noise-6",
+            "more-noise-11",
+            "original",
+            "more-noise-1",
+        ]:
+            
+            compute_roc_trajectories(
+                model_id="mlm_1l_4h_16d_zero_0k",
+                aitads_a_config=config,
+                deltas=[2.0],
+                thetas=theta_traj,
+            )
+            gc.collect()
+        
+
+            compute_roc_trajectories(
+                model_id=f"mlm_1l_4h_16d_{config}_1_60k",
+                aitads_a_config=config,
+                deltas=[2.0],
+                thetas=theta_traj,
+            )
+            gc.collect()
+
+            compute_roc_trajectories(
+                model_id=f"mlm_1l_2h_16d_{config}_1_60k",
+                aitads_a_config=config,
+                deltas=[2.0],
+                thetas=theta_traj,
+            )
+            gc.collect()
+
+            compute_roc_trajectories(
+                model_id=f"mlm_1l_1h_16d_{config}_1_60k",
+                aitads_a_config=config,
+                deltas=[2.0],
+                thetas=theta_traj,
+            )
+            gc.collect()
+
+            compute_roc_trajectories(
+                model_id="mlm_1l_4h_16d_zero_0k",
+                aitads_a_config=config,
+                deltas=[4.0],
+                thetas=theta_traj,
+            )
+            gc.collect()
+    
+    eval_run_ab(alertbert_theta_roc_traj_primary)
+    eval_run_ab(alertbert_theta_roc_traj_secondary)
+    eval_run_ab(alertbert_theta_roc_traj_tertiary)
+    eval_run_ab(alertbert_theta_roc_traj_quartary)

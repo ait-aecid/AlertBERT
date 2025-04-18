@@ -42,6 +42,10 @@ def set_up_log(filename: str) -> None:
         filename (str): The name of the log file.
 
     """
+    # check if logging is already configured
+    if logging.getLogger().hasHandlers():
+        print(f"Logging already configured to {logging.getLogger().handlers[0].baseFilename}")
+        return
     logging.basicConfig(
         format="%(asctime)s %(levelname)s: %(message)s",
         level=logging.DEBUG,
@@ -52,6 +56,10 @@ def set_up_log(filename: str) -> None:
 
 def log_to_stdout() -> None:
     """Configures logging to stdout."""
+    # check if logging is already configured
+    if logging.getLogger().hasHandlers():
+        print(f"Logging already configured to {logging.getLogger().handlers[0].baseFilename}")
+        return
     logging.basicConfig(
         format="%(asctime)s %(levelname)s: %(message)s",
         level=logging.DEBUG,
