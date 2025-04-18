@@ -469,6 +469,11 @@ def compute_roc_trajectories(
     not_found_results = []
 
     for delta, theta in zip(deltas, thetas):
+        if theta is not None and theta < delta:
+            logging.info(
+                f"Skipping delta {delta} and theta {theta} because theta < delta."
+            )
+            continue
         grouping_model_params = get_grouping_model_params(
             model_id,
             delta,
@@ -660,7 +665,7 @@ def roc_plot(
                             theta = None
                             label_str = f"delta = {highlight_result[0]}"
                         if theta == highlight_result[1]:
-                            ax.scatter(tn, re, color="r", marker="x", label=label_str)
+                            ax.scatter(tn, re, color="r", marker="x", label=label_str, zorder=2.5)
 
             tnr = np.array(tnr)
             tpr = np.array(tpr)
@@ -1182,7 +1187,13 @@ if __name__ == "__main__":
 
     # main(model_ids=["mlm_1l_4h_16d_zero_0k"], aitads_a_config="more-noise-11", deltas=[2.0], thetas=[6.0])
 
-    def eval_run_td():
+    def config_delta(config: str) -> float:
+        if config == "simul-attacks" or config == "more-noise-11":
+            return 12.0
+        else:
+            return 16.0
+
+    def eval_run_td() -> None:
         for config in [
             "simul-attacks",
             "more-noise-2",
@@ -1200,7 +1211,7 @@ if __name__ == "__main__":
 
     eval_run_td()
 
-    def eval_run_ab(theta_traj):
+    def eval_run_ab(theta_traj: list[float]) -> None:
         for config in [
             "simul-attacks",
             "more-noise-2",
@@ -1212,7 +1223,7 @@ if __name__ == "__main__":
             compute_roc_trajectories(
                 model_id="mlm_1l_4h_16d_zero_0k",
                 aitads_a_config=config,
-                deltas=[2.0],
+                deltas=[config_delta(config)],
                 thetas=theta_traj,
             )
             gc.collect()
@@ -1220,7 +1231,7 @@ if __name__ == "__main__":
             compute_roc_trajectories(
                 model_id=f"mlm_1l_4h_16d_{config}_1_60k",
                 aitads_a_config=config,
-                deltas=[2.0],
+                deltas=[config_delta(config)],
                 thetas=theta_traj,
             )
             gc.collect()
@@ -1228,7 +1239,7 @@ if __name__ == "__main__":
             compute_roc_trajectories(
                 model_id=f"mlm_1l_2h_16d_{config}_1_60k",
                 aitads_a_config=config,
-                deltas=[2.0],
+                deltas=[config_delta(config)],
                 thetas=theta_traj,
             )
             gc.collect()
@@ -1236,18 +1247,11 @@ if __name__ == "__main__":
             compute_roc_trajectories(
                 model_id=f"mlm_1l_1h_16d_{config}_1_60k",
                 aitads_a_config=config,
-                deltas=[2.0],
+                deltas=[config_delta(config)],
                 thetas=theta_traj,
             )
             gc.collect()
 
-            compute_roc_trajectories(
-                model_id="mlm_1l_4h_16d_zero_0k",
-                aitads_a_config=config,
-                deltas=[4.0],
-                thetas=theta_traj,
-            )
-            gc.collect()
 
     eval_run_ab(alertbert_theta_roc_traj_primary)
     eval_run_ab(alertbert_theta_roc_traj_secondary)
