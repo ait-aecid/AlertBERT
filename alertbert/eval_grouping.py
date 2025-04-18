@@ -391,10 +391,7 @@ def get_eval_file_name(
 ) -> str:
     suffix = "_noise" if noise else "_clean"
     if grouping_model_params["id"] == "timedelta":
-        return (
-            f"timedelta_{grouping_model_params['delta']}_{aitads_a_config}"
-            + suffix
-        )
+        return f"timedelta_{grouping_model_params['delta']}_{aitads_a_config}" + suffix
     else:
         return (
             f"{len(grouping_model_params['layers'])}l_"
@@ -509,8 +506,229 @@ def compute_roc_trajectories(
         logging.info("Nothing found to compute!")
 
 
-def roc() -> None:
-    pass
+def compute_auc_score(x: Iterable[float], y: Iterable[float]) -> float:
+    """Computes the area under the curve (AUC) for the given x and y coordinates of an ROC curve.
+
+    Args:
+        x (Iterable[float]): The x coordinates.
+        y (Iterable[float]): The y coordinates.
+
+    Returns:
+        float: The computed AUC value.
+    """
+    assert sorted(y), y
+    assert sorted(x, reverse=True), x
+    assert len(x) == len(y)
+    s = 0.0
+    for i in range(1, len(x)):
+        s += abs(x[i] - x[i - 1]) * (y[i] + y[i - 1]) / 2.0
+    s += abs(x[-1]) * y[-1]
+    return s
+
+
+def roc_plot(
+    model_id: str,
+    aitads_a_config: Literal[
+        "original",
+        "simul-attacks",
+        "more-noise-1",
+        "more-noise-2",
+        "more-noise-6",
+        "more-noise-11",
+    ],
+    deltas: list[float],
+    thetas: list[float] = None,
+    layers: tuple[str] = ("embedding", "encoder"),
+    dim_reduction: int = 2,
+    path: str = "saved_models",
+    target: str = "hierarchical_event_label",
+    highlight_result: tuple[float, float] = (None, None),
+    plot_macro_only: bool = False,
+    label_vocabs: dict[str, Vocabulary] = None,
+) -> None:
+    """Plots the ROC curves for the given AlertBert or TimeDelta model and data.
+    The figure has 4 subplots, one each for training and validation data where the results were computed including/excluding the false positive alerts.
+
+    Args:
+        model_id (str): The id of the model. Can be "timedelta" or "mlm_*".
+        aitads_a_config (Literal): The configuration of the AIT-ADS-A dataset.
+        deltas (list[float]): The delta values to be used for the TimeDelta or AlertBert models.
+        thetas (list[float], optional): The theta values to be used for the AlertBert models. Defaults to None.
+        layers (tuple[str], optional): The layers to be used for the AlertBert models. Defaults to ("embedding", "encoder").
+        dim_reduction (int, optional): The dimensionality reduction to be used for the AlertBert models. Defaults to 2.
+        path (str, optional): The path to the directory where the respective model is located. Defaults to "saved_models".
+        target (str, optional): The target label in the dataset. Defaults to "hierarchical_event_label".
+        highlight_result (tuple[float, float], optional): The (delta, theta) values of the results to be highlighted in the plot. Defaults to (None, None).
+        plot_macro_only (bool, optional): Whether to plot only the macro ROC curves. Defaults to False.
+        label_vocabs (dict[str, Vocabulary], optional): The label vocabularies for plotting the non-macro ROC curves. Defaults to None.
+    """
+    # check the provided trajectories
+    if model_id != "timedelta":
+        assert thetas is not None, "Theta values must be provided for AlertBert models."
+        if len(deltas) > 1 and len(thetas) > 1:
+            assert len(deltas) == len(thetas), (
+                f"Delta and theta values must have the same length, found {len(deltas)} and {len(thetas)}."
+            )
+            # both sequences need to be in the correct order relatively to each other
+            assert sorted(deltas), (
+                "For a valid ROC plot delta values have to be non-decreasing!"
+            )
+            assert sorted(thetas, reverse=True), (
+                "For a valid ROC plot thea values have to be non-increasing!"
+            )
+        elif len(deltas) == 1 and len(thetas) > 1:
+            thetas = sorted(thetas, reverse=True)
+            deltas = [deltas[0]] * len(thetas)
+        elif len(deltas) > 1 and len(thetas) == 1:
+            deltas = sorted(deltas)
+            thetas = [thetas[0]] * len(deltas)
+    else:
+        thetas = [None] * len(deltas)
+        deltas = sorted(deltas)
+
+    if not plot_macro_only:
+        lvl_1_labels = get_low_level_labels(label_vocabs[target], 1)
+
+    # create the figure
+    fig, axs = plt.subplots(2, 2, figsize=(12, 13), sharex=True, sharey=True)
+    title_str = f"ROC plots for: model = {model_id}, data = {aitads_a_config}"
+    if model_id != "timedelta":
+        title_str += f", {'input' if layers == 1 else 'output'} embeddings, {dim_reduction} dimensions"
+    fig.suptitle(title_str)
+
+    cmap = plt.get_cmap("viridis")
+
+    for row in range(2):
+        for col in range(2):
+            split = "train" if not col else "val"
+            noise = bool(row)
+
+            # load the results
+            results = []
+            data_points = []
+
+            for delta, theta in zip(deltas, thetas):
+                grouping_model_params = get_grouping_model_params(
+                    model_id,
+                    delta,
+                    theta,
+                    layers,
+                    dim_reduction,
+                    data_split=split,
+                )
+                file_name = get_eval_file_name(
+                    grouping_model_params, aitads_a_config, noise=noise
+                )
+                try:  # noqa: SIM105
+                    results.append(
+                        load_results(
+                            path=path, model_id=model_id, name=file_name, split=split
+                        )
+                    )
+                    data_points.append((delta, theta))
+                except FileNotFoundError:
+                    pass
+
+            # plot ROC curves
+            ax = axs[row, col]
+            ax.set_box_aspect(1)
+            ax.grid()
+            ax.set_xlim(-0.01, 1.01)
+            ax.set_ylim(-0.01, 1.01)
+            ax.set_title(
+                f"{split} data, {'incl' if noise else 'excl'} fp alerts, {len(data_points)} data points"
+            )
+            if row == 1:
+                ax.set_xlabel("True Negative Rate")
+            if col == 0:
+                ax.set_ylabel("True Positive Rate")
+
+            # macro
+            tpr = []
+            tnr = []
+            for result in results:
+                re = result["summary"]["macro"]["macro"]["recall"][0]
+                tn = result["summary"]["macro"]["macro"]["tnr"][0]
+                if re is not None and tn is not None:
+                    tpr.append(re)
+                    tnr.append(tn)
+                    if highlight_result[0] == result["model_params"]["delta"]:
+                        try:
+                            theta = result["model_params"]["theta"]
+                            label_str = f"delta = {highlight_result[0]}, theta = {highlight_result[1]}"
+                        except KeyError:
+                            theta = None
+                            label_str = f"delta = {highlight_result[0]}"
+                        if theta == highlight_result[1]:
+                            ax.scatter(tn, re, color="r", marker="x", label=label_str)
+
+            tnr = np.array(tnr)
+            tpr = np.array(tpr)
+            ax.plot(
+                tnr,
+                tpr,
+                label=f"AUC = {compute_auc_score(tnr, tpr):.3f}, macro",
+                color="r",
+                zorder=2.5,
+            )
+            ax.hlines(tpr[-1], 0.0, tnr[-1], ls="--", color="r", alpha=0.5, zorder=2.5)
+            ax.vlines(tnr[0], 0.0, tpr[0], ls="--", color="r", alpha=0.5, zorder=2.5)
+
+            # individual labels
+            if not plot_macro_only:
+                for i, label in enumerate(lvl_1_labels):
+                    tpr = []
+                    tnr = []
+                    for result in results:
+                        re = result["summary"]["lvl1"][label]["recall"][0]
+                        tn = result["summary"]["lvl1"][label]["tnr"][0]
+                        if re is not None and tn is not None:
+                            tpr.append(re)
+                            tnr.append(tn)
+                            if highlight_result[0] == result["model_params"]["delta"]:
+                                try:
+                                    theta = result["model_params"]["theta"]
+                                except KeyError:
+                                    theta = None
+                                if theta == highlight_result[1]:
+                                    ax.scatter(
+                                        tn,
+                                        re,
+                                        color=cmap(i / (len(lvl_1_labels) - 1)),
+                                        marker="x",
+                                        alpha=0.5,
+                                    )
+
+                    tnr = np.array(tnr)
+                    tpr = np.array(tpr)
+                    ax.plot(
+                        tnr,
+                        tpr,
+                        label=f"AUC = {compute_auc_score(tnr, tpr):.3f}, {label}",
+                        color=cmap(i / (len(lvl_1_labels) - 1)),
+                        alpha=0.5,
+                    )
+                    ax.hlines(
+                        tpr[-1],
+                        0.0,
+                        tnr[-1],
+                        ls="--",
+                        color=cmap(i / (len(lvl_1_labels) - 1)),
+                        alpha=0.25,
+                    )
+                    ax.vlines(
+                        tnr[0],
+                        0.0,
+                        tpr[0],
+                        ls="--",
+                        color=cmap(i / (len(lvl_1_labels) - 1)),
+                        alpha=0.25,
+                    )
+
+            ax.legend(loc="lower left")
+
+    plt.tight_layout()
+    plt.show()
 
 
 # result plotting functions
@@ -965,7 +1183,6 @@ if __name__ == "__main__":
     # main(model_ids=["mlm_1l_4h_16d_zero_0k"], aitads_a_config="more-noise-11", deltas=[2.0], thetas=[6.0])
 
     def eval_run_td():
-
         for config in [
             "simul-attacks",
             "more-noise-2",
@@ -984,7 +1201,6 @@ if __name__ == "__main__":
     eval_run_td()
 
     def eval_run_ab(theta_traj):
-
         for config in [
             "simul-attacks",
             "more-noise-2",
@@ -993,7 +1209,6 @@ if __name__ == "__main__":
             "original",
             "more-noise-1",
         ]:
-            
             compute_roc_trajectories(
                 model_id="mlm_1l_4h_16d_zero_0k",
                 aitads_a_config=config,
@@ -1001,7 +1216,6 @@ if __name__ == "__main__":
                 thetas=theta_traj,
             )
             gc.collect()
-        
 
             compute_roc_trajectories(
                 model_id=f"mlm_1l_4h_16d_{config}_1_60k",
@@ -1034,7 +1248,7 @@ if __name__ == "__main__":
                 thetas=theta_traj,
             )
             gc.collect()
-    
+
     eval_run_ab(alertbert_theta_roc_traj_primary)
     eval_run_ab(alertbert_theta_roc_traj_secondary)
     eval_run_ab(alertbert_theta_roc_traj_tertiary)
