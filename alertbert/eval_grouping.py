@@ -1,3 +1,4 @@
+import gc
 import logging
 import pickle
 from collections import Counter
@@ -159,6 +160,7 @@ def eval_alert_grouping(
             pred = model(scenario).squeeze()
             true = target_vocab([scenario.data[target]]).numpy().squeeze()
             contingency_matrices.append(contingency_matrix(true, pred, label_range))
+            gc.collect()
             logging.info("Finished scenario!")
 
         del pred, true
@@ -461,7 +463,7 @@ def compute_roc_trajectories(
     else:
         thetas = [None] * len(deltas)
 
-    set_up_log("saved_models/eval")
+    set_up_log(f"{path}/eval")
     logging.info(
         f"Checking ROC trajectory for model {model_id} on data config {aitads_a_config} ..."
     )
@@ -1183,7 +1185,6 @@ def main(
 
 
 if __name__ == "__main__":
-    import gc
 
     # main(model_ids=["mlm_1l_4h_16d_zero_0k"], aitads_a_config="more-noise-11", deltas=[2.0], thetas=[6.0])
 
@@ -1209,7 +1210,7 @@ if __name__ == "__main__":
             )
             gc.collect()
 
-    eval_run_td()
+    # eval_run_td()
 
     def eval_run_ab(theta_traj: list[float]) -> None:
         for config in [

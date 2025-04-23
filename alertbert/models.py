@@ -3,10 +3,11 @@ from collections import OrderedDict
 from collections.abc import Iterable, Sequence
 from typing import Any, Literal
 
+import graph_tool
+import graph_tool.topology
 import numpy as np
 import torch
 from scipy.sparse import coo_array
-from scipy.sparse.csgraph import connected_components
 from sklearn.base import BaseEstimator
 from sklearn.decomposition import PCA
 from sklearn.metrics.pairwise import cosine_distances
@@ -1251,21 +1252,63 @@ class AlertBERT(AbstractDatasetGroupingModel):
 
         coords_0 = np.concatenate(coords_0)
         coords_1 = np.concatenate(coords_1)
-        connections = np.ones_like(coords_0, dtype=bool)
-        n_connections = len(coords_0)  # noqa: F841
 
-        connections = coo_array(
-            (
-                connections,
-                (coords_0, coords_1),
-            ),
-            shape=(len(data), len(data)),
-        )
-        del coords_0, coords_1
-        connections = connections.tocsr()
+        if True:  # scipy or graph-tool
+            connections = np.ones_like(coords_0, dtype=bool)
+            n_connections = len(coords_0)  # noqa: F841
 
-        # find connected components aka groups
-        n_groups, pred = connected_components(connections, connection="strong")
+            connections = coo_array(
+                (
+                    connections,
+                    (coords_0, coords_1),
+                ),
+                shape=(len(data), len(data)),
+            )
+            del coords_0, coords_1
+
+            # find connected components aka groups
+            if False:  # scipy -- extremely slow
+                from scipy.sparse.csgraph import connected_components
+
+                connections = connections.tocsr()
+                n_groups, pred = connected_components(connections, connection="strong")
+
+            elif True:  # graph-tools
+                connections = graph_tool.Graph(connections, directed=False)
+                pred, _ = graph_tool.topology.label_components(
+                    connections, directed=False
+                )
+                pred = pred.get_array().copy()
+
+        elif False:  # networkit -- very buggy
+            import networkit as nk
+            np.ulong = np.uint64
+            connections = nk.GraphFromCoo((coords_0, coords_1), n=len(data))
+            connections = nk.components.ConnectedComponents(connections)
+            connections.run()
+            pred = np.zeros(len(data), dtype=np.int32)
+            for i, nodes in enumerate(connections.getComponents()):
+                pred[np.array(nodes, dtype=int)] = i
+
+        elif False:  # grape -- cumbersome and slower than graph-tool
+            import pandas as pd
+            from grape import Graph
+
+            connections = pd.DataFrame({"coords_0": coords_0, "coords_1": coords_1})
+            nodes = pd.DataFrame({"name": np.arange(len(data))})
+            del coords_0, coords_1
+            connections = Graph.from_pd(
+                edges_df=connections,
+                nodes_df=nodes,
+                node_name_column="name",
+                edge_src_column="coords_0",
+                edge_dst_column="coords_1",
+                directed=False,
+            )
+            pred, n_groups, smallest, largest = connections.get_connected_components(
+                verbose=False
+            )
+
         del connections
         return pred
 
