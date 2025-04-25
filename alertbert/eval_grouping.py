@@ -1256,5 +1256,5 @@ if __name__ == "__main__":
 
     # eval_run_ab(alertbert_theta_roc_traj_primary)
     # eval_run_ab(alertbert_theta_roc_traj_secondary)
-    eval_run_ab(alertbert_theta_roc_traj_tertiary)
+    # eval_run_ab(alertbert_theta_roc_traj_tertiary)
     eval_run_ab(alertbert_theta_roc_traj_quartary)

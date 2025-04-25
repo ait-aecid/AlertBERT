@@ -3,11 +3,11 @@ from collections import OrderedDict
 from collections.abc import Iterable, Sequence
 from typing import Any, Literal
 
-import graph_tool
-import graph_tool.topology
 import numpy as np
 import torch
+from graph_tool import Graph, topology
 from scipy.sparse import coo_array
+from scipy.sparse.csgraph import connected_components
 from sklearn.base import BaseEstimator
 from sklearn.decomposition import PCA
 from sklearn.metrics.pairwise import cosine_distances
@@ -44,7 +44,7 @@ class BaseParams:
 
     def __getitem__(self, key: str) -> object:
         return self.dict[key]
-    
+
     def __delitem__(self, key: str) -> None:
         del self.dict[key]
 
@@ -1121,19 +1121,21 @@ class AlertBERT(AbstractDatasetGroupingModel):
         # compute pre clustering
         pre_clustering = self.timedelta(data)
 
-        # build graph adjacency matrix based on pre-clustering
-        coords_0 = []
-        coords_1 = []
-
         # this keeps track of how many alerts were in the previous pre-clusters
         alert_idx_offset = 0
+
+        # iterate over all pre-clusters and perform agglomerative clustering
+        pred = []
+        next_label = 0
 
         for pre_cluster in range(pre_clustering[-1] + 1):
             current_alerts = pre_clustering == pre_cluster
             pre_cluster_size = np.sum(current_alerts)
-            if pre_cluster_size <= 1:
+            if pre_cluster_size == 1:
                 # only one alert in the pre-cluster, no need to compute distances
-                alert_idx_offset += pre_cluster_size
+                alert_idx_offset += 1
+                pred.append(np.array([next_label]))
+                next_label += 1
                 continue
             pre_cluster_raw_time = data.data["raw_time"][current_alerts]
             pre_cluster_time_length = pre_cluster_raw_time[-1] - pre_cluster_raw_time[0]
@@ -1147,170 +1149,288 @@ class AlertBERT(AbstractDatasetGroupingModel):
                 distance_matrix = distance_matrix < self.delta
                 np.fill_diagonal(distance_matrix, False)
                 matrix_idxs = np.nonzero(distance_matrix)
-                coords_0.append(matrix_idxs[0].astype(np.int32) + alert_idx_offset)
-                coords_1.append(matrix_idxs[1].astype(np.int32) + alert_idx_offset)
+                pre_cluster_pred, n_labels = self.get_connected_components(
+                    matrix_idxs[0], matrix_idxs[1], pre_cluster_size
+                )
+                pred.append(pre_cluster_pred + next_label)
+                next_label += n_labels
+                alert_idx_offset += pre_cluster_size
+                continue
 
-            else:
-                # not all alert pairs are relevant,
-                # we compute distance pairs in a (off-)diagonal-block-pattern covering the diagonals of the distance matrix
-                # with rectangles of appropriate size for self.delta to save memory while covering all relevant pairs
+            # not all alert pairs are relevant,
+            # we compute distance pairs in a (off-)diagonal-block-pattern covering the diagonals of the distance matrix
+            # with rectangles of appropriate size for self.delta to save memory while covering all relevant pairs
+            # for each block a preliminary clustering is computed, which produces in total 3 clusteings of the pre-cluster
+            # these 3 clusterings are then agglomerated to produce the final clustering
 
-                square_sizes = []
-                current_square_size = 1
-                square_start_time = pre_cluster_raw_time[0]
-                for i in range(1, pre_cluster_size):
-                    if pre_cluster_raw_time[i] - square_start_time < self.delta:
-                        current_square_size += 1
-                    else:
-                        square_sizes.append(current_square_size)
-                        square_start_time = pre_cluster_raw_time[i]
-                        current_square_size = 1
-                square_sizes.append(current_square_size)
-                square_sizes = np.array(square_sizes)
-                assert square_sizes.sum() == pre_cluster_size
+            next_prelim_label = 0
+            primary_labels = []
+            secondary_labels = []
+            tertiary_labels = []
 
-                # at first compute of the initial square
+            # determine the block sizes
+            square_sizes = []
+            current_square_size = 1
+            square_start_time = pre_cluster_raw_time[0]
+            for i in range(1, pre_cluster_size):
+                if pre_cluster_raw_time[i] - square_start_time < self.delta:
+                    current_square_size += 1
+                else:
+                    square_sizes.append(current_square_size)
+                    square_start_time = pre_cluster_raw_time[i]
+                    current_square_size = 1
+            square_sizes.append(current_square_size)
+            square_sizes = np.array(square_sizes)
+            assert square_sizes.sum() == pre_cluster_size
+
+            # at first compute of the initial square
+            distance_matrix = self.metric(
+                embeddings[alert_idx_offset : alert_idx_offset + square_sizes[0]]
+            )
+            distance_matrix = distance_matrix < self.delta
+            np.fill_diagonal(distance_matrix, False)
+            matrix_idxs = np.nonzero(distance_matrix)
+            square_pred, n_labels = self.get_connected_components(
+                matrix_idxs[0], matrix_idxs[1], square_sizes[0]
+            )
+            primary_labels.append(square_pred + next_prelim_label)
+            next_prelim_label += n_labels
+
+            # then compute the remaining distance pairs by first computing the off-diagonal rectangle connecting
+            # the last square with the next one, and then the next diagonal square
+            last_square_start = 0
+            last_square_size = square_sizes[0]
+            current_square_start = square_sizes[0]
+            i = 1
+            for current_square_size in square_sizes[1:]:
+                # compute the distances between last and current square
+                distances_current_to_last_square = self.metric(
+                    embeddings[
+                        alert_idx_offset + last_square_start : alert_idx_offset
+                        + current_square_start
+                    ],
+                    embeddings[
+                        alert_idx_offset + current_square_start : alert_idx_offset
+                        + current_square_start
+                        + current_square_size
+                    ],
+                )
+                distances_current_to_last_square = (
+                    distances_current_to_last_square < self.delta
+                )
+
+                matrix_idxs = np.nonzero(distances_current_to_last_square)
+                square_pred, n_labels = self.get_connected_components(
+                    matrix_idxs[0],
+                    matrix_idxs[1],
+                    current_square_size + last_square_size,
+                )
+                if i % 2:
+                    secondary_labels.append(square_pred + next_prelim_label)
+                else:
+                    tertiary_labels.append(square_pred + next_prelim_label)
+                next_prelim_label += n_labels
+
+                # compute the distances of the current square
                 distance_matrix = self.metric(
-                    embeddings[alert_idx_offset : alert_idx_offset + square_sizes[0]]
+                    embeddings[
+                        alert_idx_offset + current_square_start : alert_idx_offset
+                        + current_square_start
+                        + current_square_size
+                    ]
                 )
                 distance_matrix = distance_matrix < self.delta
                 np.fill_diagonal(distance_matrix, False)
                 matrix_idxs = np.nonzero(distance_matrix)
-                coords_0.append(matrix_idxs[0].astype(np.int32) + alert_idx_offset)
-                coords_1.append(matrix_idxs[1].astype(np.int32) + alert_idx_offset)
+                square_pred, n_labels = self.get_connected_components(
+                    matrix_idxs[0], matrix_idxs[1], current_square_size
+                )
+                primary_labels.append(square_pred + next_prelim_label)
+                next_prelim_label += n_labels
 
-                # then compute the remaining distance pairs by first computing the off-diagonal rectangle connecting
-                # the last square with the next one, and then the next diagonal square
-                last_square_start = 0
-                current_square_start = square_sizes[0]
-                for current_square_size in square_sizes[1:]:
-                    # compute the distances between last and current square
-                    distances_current_to_last_square = self.metric(
-                        embeddings[
-                            alert_idx_offset + last_square_start : alert_idx_offset
-                            + current_square_start
-                        ],
-                        embeddings[
-                            alert_idx_offset + current_square_start : alert_idx_offset
-                            + current_square_start
-                            + current_square_size
-                        ],
-                    )
-                    distances_current_to_last_square = (
-                        distances_current_to_last_square < self.delta
-                    )
+                # update the start indices for the next square
+                i += 1
+                last_square_start = current_square_start
+                last_square_size = current_square_size
+                current_square_start += current_square_size
 
-                    # insert connections in the lists
-                    matrix_idxs = np.nonzero(distances_current_to_last_square)
+            # check and agglomerate the preliminary labels
+            primary_labels = np.concatenate(primary_labels)
+            secondary_labels = np.concatenate(secondary_labels)
+            tertiary_labels = (
+                np.concatenate(tertiary_labels)
+                if len(tertiary_labels) > 0
+                else np.array([])
+            )
+            assert len(primary_labels) == pre_cluster_size
+            if not i % 2:
+                assert len(secondary_labels) == pre_cluster_size
+                assert (
+                    len(tertiary_labels)
+                    == pre_cluster_size - square_sizes[0] - square_sizes[-1]
+                )
+                tertiary_labels = np.concatenate(
+                    [
+                        -1 * np.arange(1, square_sizes[0] + 1),
+                        tertiary_labels,
+                        -1 * np.arange(1, square_sizes[-1] + 1) - 2 * square_sizes[0],
+                    ]
+                )
+            else:
+                assert len(tertiary_labels) == pre_cluster_size - square_sizes[0]
+                assert len(secondary_labels) == pre_cluster_size - square_sizes[-1]
+                secondary_labels = np.concatenate(
+                    [secondary_labels, -1 * np.arange(1, square_sizes[-1] + 1)]
+                )
+                tertiary_labels = np.concatenate(
+                    [
+                        -1 * np.arange(1, square_sizes[0] + 1) - 2 * square_sizes[-1],
+                        tertiary_labels,
+                    ]
+                )
+            assert len(secondary_labels) == len(tertiary_labels)
 
-                    coo_0 = (
-                        matrix_idxs[0].astype(np.int32)
-                        + alert_idx_offset
-                        + last_square_start
-                    )
-                    coo_1 = (
-                        matrix_idxs[1].astype(np.int32)
-                        + alert_idx_offset
-                        + current_square_start
-                    )
+            if len(tertiary_labels) > 0:
+                secondary_labels, _ = self.agglomerate_labels(
+                    secondary_labels, tertiary_labels
+                )
+            primary_labels, n_labels = self.agglomerate_labels(
+                primary_labels, secondary_labels
+            )
 
-                    coords_0.append(coo_0)
-                    coords_1.append(coo_1)
-
-                    coords_0.append(coo_1)
-                    coords_1.append(coo_0)
-
-                    # compute the distances of the current square
-                    distance_matrix = self.metric(
-                        embeddings[
-                            alert_idx_offset + current_square_start : alert_idx_offset
-                            + current_square_start
-                            + current_square_size
-                        ]
-                    )
-                    distance_matrix = distance_matrix < self.delta
-                    np.fill_diagonal(distance_matrix, False)
-                    matrix_idxs = np.nonzero(distance_matrix)
-                    coords_0.append(
-                        matrix_idxs[0].astype(np.int32)
-                        + alert_idx_offset
-                        + current_square_start
-                    )
-                    coords_1.append(
-                        matrix_idxs[1].astype(np.int32)
-                        + alert_idx_offset
-                        + current_square_start
-                    )
-
-                    # update the start indices for the next square
-                    last_square_start = current_square_start
-                    current_square_start += current_square_size
-
+            pred.append(primary_labels + next_label)
+            next_label += n_labels
             alert_idx_offset += pre_cluster_size
 
+        pred = np.concatenate(pred)
         assert alert_idx_offset == len(data)
-
-        coords_0 = np.concatenate(coords_0)
-        coords_1 = np.concatenate(coords_1)
-
-        if True:  # scipy or graph-tool
-            connections = np.ones_like(coords_0, dtype=bool)
-            n_connections = len(coords_0)  # noqa: F841
-
-            connections = coo_array(
-                (
-                    connections,
-                    (coords_0, coords_1),
-                ),
-                shape=(len(data), len(data)),
-            )
-            del coords_0, coords_1
-
-            # find connected components aka groups
-            if False:  # scipy -- extremely slow
-                from scipy.sparse.csgraph import connected_components
-
-                connections = connections.tocsr()
-                n_groups, pred = connected_components(connections, connection="strong")
-
-            elif True:  # graph-tools
-                connections = graph_tool.Graph(connections, directed=False)
-                pred, _ = graph_tool.topology.label_components(
-                    connections, directed=False
-                )
-                pred = pred.get_array().copy()
-
-        elif False:  # networkit -- very buggy
-            import networkit as nk
-            np.ulong = np.uint64
-            connections = nk.GraphFromCoo((coords_0, coords_1), n=len(data))
-            connections = nk.components.ConnectedComponents(connections)
-            connections.run()
-            pred = np.zeros(len(data), dtype=np.int32)
-            for i, nodes in enumerate(connections.getComponents()):
-                pred[np.array(nodes, dtype=int)] = i
-
-        elif False:  # grape -- cumbersome and slower than graph-tool
-            import pandas as pd
-            from grape import Graph
-
-            connections = pd.DataFrame({"coords_0": coords_0, "coords_1": coords_1})
-            nodes = pd.DataFrame({"name": np.arange(len(data))})
-            del coords_0, coords_1
-            connections = Graph.from_pd(
-                edges_df=connections,
-                nodes_df=nodes,
-                node_name_column="name",
-                edge_src_column="coords_0",
-                edge_dst_column="coords_1",
-                directed=False,
-            )
-            pred, n_groups, smallest, largest = connections.get_connected_components(
-                verbose=False
-            )
-
-        del connections
+        assert len(pred) == len(data)
+        assert np.max(pred) + 1 == next_label
         return pred
+
+    def get_connected_components(
+        self,
+        coords_0: np.ndarray,
+        coords_1: np.ndarray,
+        n_nodes: int,
+        library: Literal["scipy", "graph-tools"] = "graph-tools",
+    ) -> np.ndarray:
+        """Finds the connected components in the graph defined by the coordinates.
+
+        Args:
+            coords_0 (np.ndarray): The first set of coordinates.
+            coords_1 (np.ndarray): The second set of coordinates.
+            n_nodes (int): The number of nodes in the graph.
+            library (str, optional): The library to use for finding connected components. Defaults to "graph-tools".
+
+        Returns:
+            np.ndarray: The connected components of the graph.
+            int: The number of connected components.
+        """
+        # create adjacency matrix
+        connections = np.ones_like(coords_0, dtype=bool)
+        connections = coo_array(
+            (
+                connections,
+                (coords_0, coords_1),
+            ),
+            shape=(n_nodes, n_nodes),
+        )
+
+        # find connected components aka groups
+        if library == "scipy":  # extremely slow for large graphs
+            connections = connections.tocsr()
+            n_groups, pred = connected_components(connections, connection="strong")
+
+        elif library == "graph-tools":
+            connections = Graph(connections, directed=False)
+            pred, _ = topology.label_components(connections, directed=False)
+            pred = pred.get_array().copy()
+            n_groups = int(np.max(pred) + 1)
+
+        else:
+            raise ValueError(
+                f"Library {library} not supported! Supported libraries: scipy, graph-tools"
+            )
+
+        return pred, n_groups
+
+    def agglomerate_labels(
+        self, prelim_labels_1: np.ndarray[int], prelim_labels_2: np.ndarray[int]
+    ) -> np.ndarray[int]:
+        """Merges two clustering results into a single set of labels by merging all intersecting clusters.
+
+        Args:
+            prelim_labels_1 (np.ndarray[int]): The first set of preliminary labels.
+            prelim_labels_2 (np.ndarray[int]): The second set of preliminary labels.
+
+        Returns:
+            np.ndarray[int]: The final set of labels after merging.
+            int: The number of unique labels in the final set.
+        """
+        assert len(prelim_labels_1) == len(prelim_labels_2)
+
+        # define maps to efficiently go back and forth between final and preliminary labels
+        final_label_to_prelim_labels: list[set] = []
+        prelim_labels_to_final_label: dict[int, int] = {}
+
+        for l1, l2 in zip(prelim_labels_1, prelim_labels_2):
+            if (
+                l1 in prelim_labels_to_final_label
+                and l2 in prelim_labels_to_final_label
+            ):
+                # both preliminary labels are already assigned to final labels
+                if prelim_labels_to_final_label[l1] == prelim_labels_to_final_label[l2]:
+                    # the assigned final labels are the same, there is nothing to do
+                    continue
+                else:
+                    # the assigned final labels are different
+                    # we merge them by transferring all preliminary labels of the second final label to the first one
+                    # then we mark the second final label as deleted
+                    final_label = prelim_labels_to_final_label[l1]
+                    old_l2_final_label = prelim_labels_to_final_label[l2]
+                    final_label_to_prelim_labels[final_label].update(
+                        final_label_to_prelim_labels[old_l2_final_label]
+                    )
+                    for prelim_label in final_label_to_prelim_labels[
+                        old_l2_final_label
+                    ]:
+                        prelim_labels_to_final_label[prelim_label] = final_label
+                    final_label_to_prelim_labels[old_l2_final_label] = None
+
+            elif l1 in prelim_labels_to_final_label:
+                # only the first preliminary label is assigned to a final label
+                # we assign the second preliminary label to the same final label
+                final_label = prelim_labels_to_final_label[l1]
+                final_label_to_prelim_labels[final_label].add(l2)
+                prelim_labels_to_final_label[l2] = final_label
+
+            elif l2 in prelim_labels_to_final_label:
+                # only the second preliminary label is assigned to a final label
+                # we assign the first preliminary label to the same final label
+                final_label = prelim_labels_to_final_label[l2]
+                final_label_to_prelim_labels[final_label].add(l1)
+                prelim_labels_to_final_label[l1] = final_label
+
+            else:
+                # neither preliminary label is assigned to a final label
+                # we create a new final label and assign both preliminary labels to it
+                final_label = len(final_label_to_prelim_labels)
+                final_label_to_prelim_labels.append(set((l1, l2)))
+                prelim_labels_to_final_label[l1] = final_label
+                prelim_labels_to_final_label[l2] = final_label
+
+        # create the final label clustering and remove the gaps caused by deleted labels
+        final_labels = []
+        for l1, l2 in zip(prelim_labels_1, prelim_labels_2):
+            f1 = prelim_labels_to_final_label[l1]
+            f2 = prelim_labels_to_final_label[l2]
+            assert f1 == f2
+            final_labels.append(f1)
+        used_labels, final_labels = np.unique(
+            np.array(final_labels), return_inverse=True
+        )
+        return final_labels, len(used_labels)
 
     def get_embeddings(
         self, data: AlertDataset, apply_dim_red: bool = True, add_time: bool = True
