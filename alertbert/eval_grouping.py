@@ -7,6 +7,7 @@ from typing import Literal
 
 import matplotlib.pyplot as plt
 import numpy as np
+from joblib import Parallel, delayed
 from scipy.sparse import coo_matrix
 
 from alertbert.aitads import AITAlertDataset, MultiAlertDataset
@@ -23,7 +24,7 @@ from alertbert.models import (
     TimeDelta,
 )
 from alertbert.preprocessing import Vocabulary
-from alertbert.utils import get_device, log_to_stdout, set_up_log
+from alertbert.utils import log_to_stdout, set_up_log
 
 """This module contains functions for evaluating alert grouping models.
 If executed as a script, it will load a trained model and evaluate it on the training and validation sets of the specified augmentation of the AIT Alert dataset.
@@ -161,7 +162,7 @@ def eval_alert_grouping(
             true = target_vocab([scenario.data[target]]).numpy().squeeze()
             contingency_matrices.append(contingency_matrix(true, pred, label_range))
             gc.collect()
-            logging.info("Finished scenario!")
+            # logging.info("Finished scenario!")
 
         del pred, true
 
@@ -411,10 +412,10 @@ timedelta_roc_traj_primary = [2.0**i for i in range(-7, 13)]
 timedelta_roc_traj_secondary = [2.0**i * 1.5 for i in range(-7, 12)]
 timedelta_roc_traj_all = timedelta_roc_traj_primary + timedelta_roc_traj_secondary
 
-alertbert_theta_roc_traj_primary = [2.0**i for i in range(1, 7)]
-alertbert_theta_roc_traj_secondary = [2.0**i for i in range(7, 11)]
+alertbert_theta_roc_traj_primary = [2.0**i for i in range(7)]
+alertbert_theta_roc_traj_secondary = [2.0**i for i in range(-7, 0)] + [2.0**i for i in range(7, 13)]
 alertbert_theta_roc_traj_tertiary = [2.0**i * 1.5 for i in range(6)]
-alertbert_theta_roc_traj_quartary = [2.0**i * 1.5 for i in range(6, 10)]
+alertbert_theta_roc_traj_quartary = [2.0**i * 1.5 for i in range(-7, 0)] + [2.0**i * 1.5 for i in range(6, 12)]
 alertbert_theta_roc_traj_all = (
     timedelta_roc_traj_primary
     + alertbert_theta_roc_traj_secondary
@@ -465,7 +466,7 @@ def compute_roc_trajectories(
 
     set_up_log(f"{path}/eval")
     logging.info(
-        f"Checking ROC trajectory for model {model_id} on data config {aitads_a_config} ..."
+        f"{model_id:<33} - Checking ROC trajectory for model {model_id} on data config {aitads_a_config} ..."
     )
 
     not_found_results = []
@@ -473,9 +474,9 @@ def compute_roc_trajectories(
     for delta, theta in zip(deltas, thetas):
         if theta is not None and theta < delta:
             logging.info(
-                f"Skipping delta {delta} and theta {theta} because theta < delta."
+                f"{model_id:<33} - Adapting delta {delta} for theta {theta} because theta < delta."
             )
-            continue
+            delta = theta
         grouping_model_params = get_grouping_model_params(
             model_id,
             delta,
@@ -487,16 +488,16 @@ def compute_roc_trajectories(
         file_name = get_eval_file_name(
             grouping_model_params, aitads_a_config, noise=True
         )
-        logging.info(f"Searching for {file_name}")
+        logging.info(f"{model_id:<33} - Searching for {file_name}")
         try:
             load_results(path=path, model_id=model_id, name=file_name, split="train")
-            logging.info("Found!")
+            logging.info(f"{model_id:<33} - Found!")
         except FileNotFoundError:
-            logging.info("Not found, will compute results ...")
+            logging.info(f"{model_id:<33} - Not found, will compute results ...")
             not_found_results.append([delta, theta])
 
     if len(not_found_results) > 0:
-        logging.info(f"Found {len(not_found_results)} results to compute ...")
+        logging.info(f"{model_id:<33} - Found {len(not_found_results)} results to compute ...")
         deltas = [i[0] for i in not_found_results]
         thetas = [i[1] for i in not_found_results]
         main(
@@ -508,9 +509,9 @@ def compute_roc_trajectories(
             dim_reduction=dim_reduction,
             path=path,
         )
-        logging.info("All results computed!")
+        logging.info(f"{model_id:<33} - All results computed!")
     else:
-        logging.info("Nothing found to compute!")
+        logging.info(f"{model_id:<33} - Nothing found to compute!")
 
 
 def compute_auc_score(x: Iterable[float], y: Iterable[float]) -> float:
@@ -1121,26 +1122,27 @@ def main(
                 "Delta and theta values must have the same length."
             )
 
-    log_to_stdout()
-    logging.info(f"Loading data config {aitads_a_config} ...")
+    write_logs = False
+    log_to_stdout() if write_logs else None
+    logging.info(f"Loading data config {aitads_a_config} ...") if write_logs else None
     train_data = AITAlertDataset(split="train", configuration=aitads_a_config)
     val_data = AITAlertDataset(split="val", configuration=aitads_a_config)
     label_vocabs = load_ground_truth_label_vocabs(path, aitads_a_config)
 
     if timedelta:
-        logging.info("Evaluating TimeDelta models...")
+        logging.info("Evaluating TimeDelta models...") if write_logs else None
     else:
-        logging.info("Evaluating AlertBert models...")
+        logging.info("Evaluating AlertBert models...") if write_logs else None
         reports, model_param_dicts = load_reports(model_ids, path)
-        device = get_device("cpu")
+        device = "cpu"
 
-        logging.info("Loading data tools...")
+        logging.info("Loading data tools...") if write_logs else None
         data_tools = load_data_tools(model_ids, model_param_dicts, path, label_vocabs)
 
-        logging.info("Loading models...")
+        logging.info("Loading models...") if write_logs else None
         models = load_models(model_param_dicts, path, data_tools, device)
 
-    logging.info("Setup complete.")
+    logging.info("Setup complete.") if write_logs else None
 
     for key in model_ids:
         for i in range(len(deltas)):
@@ -1149,10 +1151,10 @@ def main(
                     model_id="timedelta",
                     delta=deltas[i],
                 )
-                logging.info(f"Evaluating delta = {deltas[i]} ...")
+                logging.info(f"Evaluating delta = {deltas[i]} ...") if write_logs else None
                 grouping_model = TimeDelta(delta=deltas[i])
             else:
-                logging.info(f"Evaluating model {key} ...")
+                logging.info(f"Evaluating model {key} ...") if write_logs else None
                 grouping_model_params = get_grouping_model_params(
                     model_id=key,
                     delta=deltas[i],
@@ -1181,28 +1183,23 @@ def main(
                 path,
             )
 
-    logging.info("Done.")
+    logging.info("Done.") if write_logs else None
 
 
 if __name__ == "__main__":
-
     # main(model_ids=["mlm_1l_4h_16d_zero_0k"], aitads_a_config="more-noise-11", deltas=[2.0], thetas=[6.0])
 
-    def config_delta(config: str) -> float:
-        if config == "simul-attacks" or config == "more-noise-11":
-            return 12.0
-        else:
-            return 16.0
+    data_configs = [
+        "simul-attacks",
+        "more-noise-2",
+        "more-noise-6",
+        "more-noise-11",
+        "original",
+        "more-noise-1",
+    ]
 
     def eval_run_td() -> None:
-        for config in [
-            "simul-attacks",
-            "more-noise-2",
-            "more-noise-6",
-            "more-noise-11",
-            "original",
-            "more-noise-1",
-        ]:
+        for config in data_configs:
             compute_roc_trajectories(
                 model_id="timedelta",
                 aitads_a_config=config,
@@ -1212,49 +1209,29 @@ if __name__ == "__main__":
 
     # eval_run_td()
 
-    def eval_run_ab(theta_traj: list[float]) -> None:
-        for config in [
-            "simul-attacks",
-            "more-noise-2",
-            "more-noise-6",
-            "more-noise-11",
-            "original",
-            "more-noise-1",
-        ]:
-            compute_roc_trajectories(
-                model_id="mlm_1l_4h_16d_zero_0k",
+    def model_config_generator() -> Iterable[tuple[str, str]]:
+        for config in data_configs:
+            for model_id in [
+                "mlm_1l_4h_16d_zero_0k",
+                f"mlm_1l_4h_16d_{config}_1_60k",
+                f"mlm_1l_2h_16d_{config}_1_60k",
+                f"mlm_1l_1h_16d_{config}_1_60k",
+            ]:
+                yield model_id, config
+
+    def eval_run_ab(theta_traj: list[float], delta: float) -> None:
+        Parallel(n_jobs=4)(
+            delayed(compute_roc_trajectories)(
+                model_id=model_id,
                 aitads_a_config=config,
-                deltas=[config_delta(config)],
+                deltas=[delta],
                 thetas=theta_traj,
             )
-            gc.collect()
+            for model_id, config in model_config_generator()
+        )
 
-            compute_roc_trajectories(
-                model_id=f"mlm_1l_4h_16d_{config}_1_60k",
-                aitads_a_config=config,
-                deltas=[config_delta(config)],
-                thetas=theta_traj,
-            )
-            gc.collect()
-
-            compute_roc_trajectories(
-                model_id=f"mlm_1l_2h_16d_{config}_1_60k",
-                aitads_a_config=config,
-                deltas=[config_delta(config)],
-                thetas=theta_traj,
-            )
-            gc.collect()
-
-            compute_roc_trajectories(
-                model_id=f"mlm_1l_1h_16d_{config}_1_60k",
-                aitads_a_config=config,
-                deltas=[config_delta(config)],
-                thetas=theta_traj,
-            )
-            gc.collect()
-
-
-    # eval_run_ab(alertbert_theta_roc_traj_primary)
-    # eval_run_ab(alertbert_theta_roc_traj_secondary)
-    # eval_run_ab(alertbert_theta_roc_traj_tertiary)
-    eval_run_ab(alertbert_theta_roc_traj_quartary)
+    for delta in [8.0, 12.0, 16.0]:
+        eval_run_ab(alertbert_theta_roc_traj_primary, delta)
+        eval_run_ab(alertbert_theta_roc_traj_secondary, delta)
+        eval_run_ab(alertbert_theta_roc_traj_tertiary, delta)
+        eval_run_ab(alertbert_theta_roc_traj_quartary, delta)
