@@ -1146,11 +1146,8 @@ class AlertBERT(AbstractDatasetGroupingModel):
                 distance_matrix = self.metric(
                     embeddings[alert_idx_offset : alert_idx_offset + pre_cluster_size]
                 )
-                distance_matrix = distance_matrix < self.delta
-                np.fill_diagonal(distance_matrix, False)
-                matrix_idxs = np.nonzero(distance_matrix)
-                pre_cluster_pred, n_labels = self.get_connected_components(
-                    matrix_idxs[0], matrix_idxs[1], pre_cluster_size
+                pre_cluster_pred, n_labels = self.dist_matrix_to_connected_components(
+                    distance_matrix, pre_cluster_size
                 )
                 pred.append(pre_cluster_pred + next_label)
                 next_label += n_labels
@@ -1160,8 +1157,8 @@ class AlertBERT(AbstractDatasetGroupingModel):
             # not all alert pairs are relevant,
             # we compute distance pairs in a (off-)diagonal-block-pattern covering the diagonals of the distance matrix
             # with rectangles of appropriate size for self.delta to save memory while covering all relevant pairs
-            # for each block a preliminary clustering is computed, which produces in total 3 clusteings of the pre-cluster
-            # these 3 clusterings are then agglomerated to produce the final clustering
+            # for each block a preliminary clustering is computed, which produces in total 3 different clusterings of the pre-cluster
+            # these 3 clusterings are then united to produce the final clustering
 
             next_prelim_label = 0
             primary_labels = []
@@ -1183,15 +1180,12 @@ class AlertBERT(AbstractDatasetGroupingModel):
             square_sizes = np.array(square_sizes)
             assert square_sizes.sum() == pre_cluster_size
 
-            # at first compute of the initial square
+            # at first compute labels of the initial square
             distance_matrix = self.metric(
                 embeddings[alert_idx_offset : alert_idx_offset + square_sizes[0]]
             )
-            distance_matrix = distance_matrix < self.delta
-            np.fill_diagonal(distance_matrix, False)
-            matrix_idxs = np.nonzero(distance_matrix)
-            square_pred, n_labels = self.get_connected_components(
-                matrix_idxs[0], matrix_idxs[1], square_sizes[0]
+            square_pred, n_labels = self.dist_matrix_to_connected_components(
+                distance_matrix, square_sizes[0]
             )
             primary_labels.append(square_pred + next_prelim_label)
             next_prelim_label += n_labels
@@ -1222,7 +1216,7 @@ class AlertBERT(AbstractDatasetGroupingModel):
                 matrix_idxs = np.nonzero(distances_current_to_last_square)
                 square_pred, n_labels = self.get_connected_components(
                     matrix_idxs[0],
-                    matrix_idxs[1],
+                    matrix_idxs[1] + last_square_size,  # change 1
                     current_square_size + last_square_size,
                 )
                 if i % 2:
@@ -1239,11 +1233,8 @@ class AlertBERT(AbstractDatasetGroupingModel):
                         + current_square_size
                     ]
                 )
-                distance_matrix = distance_matrix < self.delta
-                np.fill_diagonal(distance_matrix, False)
-                matrix_idxs = np.nonzero(distance_matrix)
-                square_pred, n_labels = self.get_connected_components(
-                    matrix_idxs[0], matrix_idxs[1], current_square_size
+                square_pred, n_labels = self.dist_matrix_to_connected_components(
+                    distance_matrix, current_square_size
                 )
                 primary_labels.append(square_pred + next_prelim_label)
                 next_prelim_label += n_labels
@@ -1269,33 +1260,45 @@ class AlertBERT(AbstractDatasetGroupingModel):
                     len(tertiary_labels)
                     == pre_cluster_size - square_sizes[0] - square_sizes[-1]
                 )
-                tertiary_labels = np.concatenate(
+                tertiary_labels = np.concatenate(  # add additional labels to get sequences of the same length
                     [
-                        -1 * np.arange(1, square_sizes[0] + 1),
+                        -1
+                        * np.arange(
+                            1, square_sizes[0] + 1
+                        ),  # make sure the labels dont collide
                         tertiary_labels,
-                        -1 * np.arange(1, square_sizes[-1] + 1) - 2 * square_sizes[0],
+                        -1 * np.arange(1, square_sizes[-1] + 1)
+                        - 2 * square_sizes[0],  # make sure the labels dont collide
                     ]
                 )
             else:
                 assert len(tertiary_labels) == pre_cluster_size - square_sizes[0]
                 assert len(secondary_labels) == pre_cluster_size - square_sizes[-1]
-                secondary_labels = np.concatenate(
-                    [secondary_labels, -1 * np.arange(1, square_sizes[-1] + 1)]
-                )
-                tertiary_labels = np.concatenate(
+                secondary_labels = np.concatenate(  # add additional labels to get sequences of the same length
                     [
-                        -1 * np.arange(1, square_sizes[0] + 1) - 2 * square_sizes[-1],
+                        secondary_labels,
+                        -1 * np.arange(1, square_sizes[-1] + 1),
+                    ]  # make sure the labels dont collide
+                )
+                tertiary_labels = np.concatenate(  # add additional labels to get sequences of the same length
+                    [
+                        -1 * np.arange(1, square_sizes[0] + 1)
+                        - 2 * square_sizes[-1],  # make sure the labels dont collide
                         tertiary_labels,
                     ]
                 )
             assert len(secondary_labels) == len(tertiary_labels)
 
             if len(tertiary_labels) > 0:
-                secondary_labels, _ = self.agglomerate_labels(
+                secondary_labels, _ = self.unite_labels(
                     secondary_labels, tertiary_labels
                 )
-            primary_labels, n_labels = self.agglomerate_labels(
-                primary_labels, secondary_labels
+            primary_labels, n_labels = self.unite_labels(
+                primary_labels,
+                -1
+                * (
+                    1 + secondary_labels
+                ),  # make sure the labels dont collide  # change 2
             )
 
             pred.append(primary_labels + next_label)
@@ -1307,6 +1310,25 @@ class AlertBERT(AbstractDatasetGroupingModel):
         assert len(pred) == len(data)
         assert np.max(pred) + 1 == next_label
         return pred
+
+    def dist_matrix_to_connected_components(
+        self,
+        distance_matrix: np.ndarray,
+        n_alerts: int,
+    ) -> tuple[np.ndarray, int]:
+        """Converts a distance matrix to connected components.
+
+        Args:
+            distance_matrix (np.ndarray): The distance matrix to be converted.
+            n_alerts (int): The number of alerts in the dataset.
+
+        Returns:
+            tuple[np.ndarray, int]: The connected components of the graph and the number of connected components found.
+        """
+        distance_matrix = distance_matrix < self.delta
+        np.fill_diagonal(distance_matrix, False)
+        matrix_idxs = np.nonzero(distance_matrix)
+        return self.get_connected_components(matrix_idxs[0], matrix_idxs[1], n_alerts)
 
     def get_connected_components(
         self,
@@ -1355,7 +1377,7 @@ class AlertBERT(AbstractDatasetGroupingModel):
 
         return pred, n_groups
 
-    def agglomerate_labels(
+    def unite_labels(
         self, prelim_labels_1: np.ndarray[int], prelim_labels_2: np.ndarray[int]
     ) -> np.ndarray[int]:
         """Merges two clustering results into a single set of labels by merging all intersecting clusters.
@@ -1369,6 +1391,11 @@ class AlertBERT(AbstractDatasetGroupingModel):
             int: The number of unique labels in the final set.
         """
         assert len(prelim_labels_1) == len(prelim_labels_2)
+        # check if the two sets of preliminary labels are disjoint
+        assert set(prelim_labels_1).isdisjoint(set(prelim_labels_2)), (
+            "Preliminary labels must be disjoint! "
+            f"Found overlapping labels: {set(prelim_labels_1).intersection(set(prelim_labels_2))}"
+        )
 
         # define maps to efficiently go back and forth between final and preliminary labels
         final_label_to_prelim_labels: list[set] = []
