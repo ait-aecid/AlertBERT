@@ -1104,6 +1104,9 @@ class AlertBERT(AbstractDatasetGroupingModel):
         readout: int = 2048,
     ) -> None:
         super().__init__()
+        assert theta >= delta, (
+            f"theta must be greater than or equal to delta ({theta} >= {delta}) as it determines the maximal possoble value of the cosine distance!"
+        )
         self.model = model
         self.collate_fn = collate_fn
         self.dim_reduction = PCA(n_components=dim_reduction) if dim_reduction else None
@@ -1131,10 +1134,10 @@ class AlertBERT(AbstractDatasetGroupingModel):
         for pre_cluster in range(pre_clustering[-1] + 1):
             current_alerts = pre_clustering == pre_cluster
             pre_cluster_size = np.sum(current_alerts)
-            if pre_cluster_size == 1:
-                # only one alert in the pre-cluster, no need to compute distances
-                alert_idx_offset += 1
-                pred.append(np.array([next_label]))
+            if pre_cluster_size == 1 or self.delta == self.theta:
+                # either only one alert in the pre-cluster or all alerts belong to the same group, so no need to compute distances
+                alert_idx_offset += pre_cluster_size
+                pred.append(next_label * np.ones(pre_cluster_size))
                 next_label += 1
                 continue
             pre_cluster_raw_time = data.data["raw_time"][current_alerts]

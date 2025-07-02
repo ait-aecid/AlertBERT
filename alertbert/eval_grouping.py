@@ -412,16 +412,19 @@ timedelta_roc_traj_primary = [2.0**i for i in range(-7, 13)]
 timedelta_roc_traj_secondary = [2.0**i * 1.5 for i in range(-7, 12)]
 timedelta_roc_traj_all = timedelta_roc_traj_primary + timedelta_roc_traj_secondary
 
+alertbert_deltas = [8.0, 12.0, 16.0]
 alertbert_theta_roc_traj_primary = [2.0**i for i in range(7)]
 alertbert_theta_roc_traj_secondary = [2.0**i for i in range(-7, 0)] + [2.0**i for i in range(7, 13)]
 alertbert_theta_roc_traj_tertiary = [2.0**i * 1.5 for i in range(6)]
 alertbert_theta_roc_traj_quartary = [2.0**i * 1.5 for i in range(-7, 0)] + [2.0**i * 1.5 for i in range(6, 12)]
 alertbert_theta_roc_traj_all = (
-    timedelta_roc_traj_primary
+    alertbert_theta_roc_traj_primary
     + alertbert_theta_roc_traj_secondary
     + alertbert_theta_roc_traj_tertiary
     + alertbert_theta_roc_traj_quartary
 )
+
+all_delta_theta_vals = sorted(timedelta_roc_traj_all)
 
 
 def compute_roc_trajectories(
@@ -455,7 +458,7 @@ def compute_roc_trajectories(
         assert thetas is not None, "Theta values must be provided for AlertBert models."
         if len(deltas) > 1 and len(thetas) > 1:
             assert len(deltas) == len(thetas), (
-                f"Delta and theta values must have the same length, found {len(deltas)} and {len(thetas)}."
+                f"Delta and theta values must have the same length if it is not 1, found {len(deltas)} and {len(thetas)}."
             )
         elif len(deltas) == 1 and len(thetas) > 1:
             deltas = [deltas[0]] * len(thetas)
@@ -524,17 +527,211 @@ def compute_auc_score(x: Iterable[float], y: Iterable[float]) -> float:
     Returns:
         float: The computed AUC value.
     """
-    assert sorted(y), y
-    assert sorted(x, reverse=True), x
     assert len(x) == len(y)
-    s = 0.0
+    s = x[0] * y[0]
     for i in range(1, len(x)):
-        s += abs(x[i] - x[i - 1]) * (y[i] + y[i - 1]) / 2.0
-    s += abs(x[-1]) * y[-1]
+        s += (x[i] - x[i - 1]) * (y[i] + y[i - 1]) / 2.0
     return s
 
 
+def get_relevant_roc_results(
+    results: list[dict[str, dict | np.ndarray]],
+) -> np.ndarray[int]:
+    """From a list of clustering results this function identifies the results defining the ROC curve.
+
+    Args:
+        results (list[dict[str, dict | np.ndarray]]): The list of results dictionaries
+            containing the evaluation metrics for each result.
+
+    Returns:
+        np.ndarray[int]: An array of indices of the relevant results that define the ROC curve.
+    """
+
+    all_valid_results = []  # (idx, tnr, recall)
+
+    for i, result in enumerate(results):
+        tnr = result["summary"]["macro"]["macro"]["tnr"][0]
+        recall = result["summary"]["macro"]["macro"]["recall"][0]
+        if not np.isnan(tnr) and not np.isnan(recall):
+            all_valid_results.append((i, tnr, recall))
+
+    relevant_results = set([all_valid_results[0][0]])
+
+    for result in all_valid_results[1:]:
+        results_to_remove = set()
+        for prev_result in relevant_results:
+            if (
+                result[1] <= all_valid_results[prev_result][1]
+                and result[2] <= all_valid_results[prev_result][2]
+            ):
+                break  # this result is not relevant
+            elif (
+                all_valid_results[prev_result][1] <= result[1]
+                and all_valid_results[prev_result][2] <= result[2]
+            ):
+                results_to_remove.add(prev_result)
+        else:
+            relevant_results.add(result[0])
+            relevant_results -= results_to_remove
+
+    return np.array(sorted(relevant_results))
+
+
+def pair_iterator(iterable: Iterable) -> Iterable:
+    """Yields each item in the iterable twice."""
+    for i in iterable:
+        yield i
+        yield i
+
+
 def roc_plot(
+    model_id: str,
+    aitads_a_config: Literal[
+        "original",
+        "simul-attacks",
+        "more-noise-1",
+        "more-noise-2",
+        "more-noise-6",
+        "more-noise-11",
+    ],
+    layers: tuple[str] = ("embedding", "encoder"),
+    dim_reduction: int = 2,
+    path: str = "saved_models",
+) -> None:
+    """Plots the ROC curves for the given AlertBert or TimeDelta model and data.
+    The figure has 4 subplots, one each for training and validation data where the results were computed including/excluding the false positive alerts.
+
+    Args:
+        model_id (str): The id of the model. Can be "timedelta" or "mlm_*".
+        aitads_a_config (Literal): The configuration of the AIT-ADS-A dataset.
+        layers (tuple[str], optional): The layers to be used for the AlertBert models. Defaults to ("embedding", "encoder").
+        dim_reduction (int, optional): The dimensionality reduction to be used for the AlertBert models. Defaults to 2.
+        path (str, optional): The path to the directory where the respective model is located. Defaults to "saved_models".
+        target (str, optional): The target label in the dataset. Defaults to "hierarchical_event_label".
+        highlight_result (tuple[float, float], optional): The (delta, theta) values of the results to be highlighted in the plot. Defaults to (None, None).
+        label_vocabs (dict[str, Vocabulary], optional): The label vocabularies for plotting the non-macro ROC curves. Defaults to None.
+    """
+
+    # create the figure
+    fig, axs = plt.subplots(2, 2, figsize=(12, 13), sharex=True, sharey=True)
+    title_str = f"ROC plots for: model = {model_id}, data = {aitads_a_config}"
+    if model_id != "timedelta":
+        title_str += f", {'input' if layers == 1 else 'output'} embeddings, {dim_reduction} dimensions"
+    fig.suptitle(title_str)
+
+    for row in range(2):
+        for col in range(2):
+            split = "train" if not col else "val"
+            noise = bool(row)
+
+            # load the results
+            results = []
+            seen_results = set()
+
+            for delta in all_delta_theta_vals:
+                for theta in all_delta_theta_vals:
+                    grouping_model_params = get_grouping_model_params(
+                        model_id,
+                        delta,
+                        theta,
+                        layers,
+                        dim_reduction,
+                        data_split=split,
+                    )
+                    file_name = get_eval_file_name(
+                        grouping_model_params, aitads_a_config, noise=noise
+                    )
+                    if file_name not in seen_results:
+                        try:  # noqa: SIM105
+                            results.append(
+                                load_results(
+                                    path=path,
+                                    model_id=model_id,
+                                    name=file_name,
+                                    split=split,
+                                )
+                            )
+                        except FileNotFoundError:
+                            pass
+                    seen_results.add(file_name)
+            if len(results) == 0:
+                continue
+
+            # find relevant results
+            relevant_results_idx = get_relevant_roc_results(results)
+
+            tpr_all = np.array(
+                [result["summary"]["macro"]["macro"]["recall"][0] for result in results]
+            )
+            tnr_all = np.array(
+                [result["summary"]["macro"]["macro"]["tnr"][0] for result in results]
+            )
+
+            tpr_relevant = tpr_all[relevant_results_idx]
+            tnr_relevant = tnr_all[relevant_results_idx]
+
+            # sort by tnr
+            sort_idx = np.argsort(tnr_relevant)
+            tnr_relevant = tnr_relevant[sort_idx]
+            tpr_relevant = tpr_relevant[sort_idx]
+
+            # ckeck that tpr is decreasing
+            assert np.all(np.diff(tpr_relevant) < 0), np.diff(tpr_relevant)
+
+            # transform to step functions
+            tnr_relevant = np.array(list(pair_iterator(tnr_relevant)))[:-1]
+            tpr_relevant = np.array(list(pair_iterator(tpr_relevant)))[1:]
+
+            # plot ROC curves
+            ax = axs[row, col]
+            ax.set_box_aspect(1)
+            ax.grid()
+            ax.set_xlim(-0.01, 1.01)
+            ax.set_ylim(-0.01, 1.01)
+            ax.set_title(
+                f"{split} data, {'incl' if noise else 'excl'} fp alerts, {len(results)} data points, {len(relevant_results_idx)} relevant"
+            )
+            if row == 1:
+                ax.set_xlabel("True Negative Rate")
+            if col == 0:
+                ax.set_ylabel("True Positive Rate")
+
+            # plot indiviadual results
+            ax.scatter(tnr_all, tpr_all, color="r", marker="x", zorder=2.5)
+
+            # plot roc curve
+            ax.plot(
+                tnr_relevant,
+                tpr_relevant,
+                label=f"AUC = {compute_auc_score(tnr_relevant, tpr_relevant):.3f}, macro",
+                color="r",
+                zorder=2.5,
+            )
+            ax.vlines(
+                tnr_relevant[-1],
+                0.0,
+                tpr_relevant[-1],
+                ls="--",
+                color="r",
+                alpha=0.5,
+                zorder=2.5,
+            )
+            ax.hlines(
+                tpr_relevant[0],
+                0.0,
+                tnr_relevant[0],
+                ls="--",
+                color="r",
+                alpha=0.5,
+                zorder=2.5,
+            )
+            ax.legend(loc="lower left")
+
+    plt.tight_layout()
+    plt.show()
+
+
+def roc_plot_old(
     model_id: str,
     aitads_a_config: Literal[
         "original",
@@ -636,6 +833,8 @@ def roc_plot(
                     data_points.append((delta, theta))
                 except FileNotFoundError:
                     pass
+            if len(results) == 0:
+                continue
 
             # plot ROC curves
             ax = axs[row, col]
@@ -1187,8 +1386,6 @@ def main(
 
 
 if __name__ == "__main__":
-    # main(model_ids=["mlm_1l_4h_16d_zero_0k"], aitads_a_config="more-noise-11", deltas=[2.0], thetas=[6.0])
-
     data_configs = [
         "simul-attacks",
         "more-noise-2",
@@ -1219,19 +1416,21 @@ if __name__ == "__main__":
             ]:
                 yield model_id, config
 
-    def eval_run_ab(theta_traj: list[float], delta: float) -> None:
-        Parallel(n_jobs=4)(
+    def eval_run_ab(theta_traj: list[float], deltas: list[float]) -> None:
+        Parallel(n_jobs=8)(
             delayed(compute_roc_trajectories)(
                 model_id=model_id,
                 aitads_a_config=config,
-                deltas=[delta],
+                deltas=deltas,
                 thetas=theta_traj,
             )
             for model_id, config in model_config_generator()
         )
 
-    for delta in [8.0, 12.0, 16.0]:
-        eval_run_ab(alertbert_theta_roc_traj_primary, delta)
-        eval_run_ab(alertbert_theta_roc_traj_secondary, delta)
-        eval_run_ab(alertbert_theta_roc_traj_tertiary, delta)
-        eval_run_ab(alertbert_theta_roc_traj_quartary, delta)
+    eval_run_ab(all_delta_theta_vals, all_delta_theta_vals)
+
+    for delta in alertbert_deltas:
+        eval_run_ab(alertbert_theta_roc_traj_primary, [delta])
+        eval_run_ab(alertbert_theta_roc_traj_secondary, [delta])
+        eval_run_ab(alertbert_theta_roc_traj_tertiary, [delta])
+        eval_run_ab(alertbert_theta_roc_traj_quartary, [delta])
