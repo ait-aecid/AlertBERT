@@ -412,7 +412,7 @@ timedelta_roc_traj_primary = [2.0**i for i in range(-7, 13)]
 timedelta_roc_traj_secondary = [2.0**i * 1.5 for i in range(-7, 12)]
 timedelta_roc_traj_all = timedelta_roc_traj_primary + timedelta_roc_traj_secondary
 
-alertbert_deltas = [8.0, 12.0, 16.0]
+alertbert_deltas = [1.5, 2.0, 3.0, 4.0, 6.0, 8.0, 12.0, 16.0, 24.0]
 alertbert_theta_roc_traj_primary = [2.0**i for i in range(7)]
 alertbert_theta_roc_traj_secondary = [2.0**i for i in range(-7, 0)] + [2.0**i for i in range(7, 13)]
 alertbert_theta_roc_traj_tertiary = [2.0**i * 1.5 for i in range(6)]
@@ -561,13 +561,13 @@ def get_relevant_roc_results(
         results_to_remove = set()
         for prev_result in relevant_results:
             if (
-                result[1] <= all_valid_results[prev_result][1]
-                and result[2] <= all_valid_results[prev_result][2]
+                result[1] < all_valid_results[prev_result][1]
+                and result[2] < all_valid_results[prev_result][2]
             ):
                 break  # this result is not relevant
             elif (
-                all_valid_results[prev_result][1] <= result[1]
-                and all_valid_results[prev_result][2] <= result[2]
+                all_valid_results[prev_result][1] < result[1]
+                and all_valid_results[prev_result][2] < result[2]
             ):
                 results_to_remove.add(prev_result)
         else:
@@ -597,6 +597,7 @@ def roc_plot(
     layers: tuple[str] = ("embedding", "encoder"),
     dim_reduction: int = 2,
     path: str = "saved_models",
+    verbose: bool = False,
 ) -> None:
     """Plots the ROC curves for the given AlertBert or TimeDelta model and data.
     The figure has 4 subplots, one each for training and validation data where the results were computed including/excluding the false positive alerts.
@@ -607,13 +608,11 @@ def roc_plot(
         layers (tuple[str], optional): The layers to be used for the AlertBert models. Defaults to ("embedding", "encoder").
         dim_reduction (int, optional): The dimensionality reduction to be used for the AlertBert models. Defaults to 2.
         path (str, optional): The path to the directory where the respective model is located. Defaults to "saved_models".
-        target (str, optional): The target label in the dataset. Defaults to "hierarchical_event_label".
-        highlight_result (tuple[float, float], optional): The (delta, theta) values of the results to be highlighted in the plot. Defaults to (None, None).
-        label_vocabs (dict[str, Vocabulary], optional): The label vocabularies for plotting the non-macro ROC curves. Defaults to None.
+        verbose (bool, optional): Whether to print additional information about the relevant results defining the ROC curve. Defaults to False.
     """
 
     # create the figure
-    fig, axs = plt.subplots(2, 2, figsize=(12, 13), sharex=True, sharey=True)
+    fig, axs = plt.subplots(2, 2, figsize=(10, 10.5), sharex=True, sharey=True)
     title_str = f"ROC plots for: model = {model_id}, data = {aitads_a_config}"
     if model_id != "timedelta":
         title_str += f", {'input' if layers == 1 else 'output'} embeddings, {dim_reduction} dimensions"
@@ -671,12 +670,34 @@ def roc_plot(
             tnr_relevant = tnr_all[relevant_results_idx]
 
             # sort by tnr
-            sort_idx = np.argsort(tnr_relevant)
+            sort_idx = np.lexsort((tnr_relevant, -1 * tpr_relevant))
             tnr_relevant = tnr_relevant[sort_idx]
             tpr_relevant = tpr_relevant[sort_idx]
 
-            # ckeck that tpr is decreasing
-            assert np.all(np.diff(tpr_relevant) < 0), np.diff(tpr_relevant)
+            if verbose:
+                print(
+                    f"relevant results for {split} data, {'incl' if noise else 'excl'} fp alerts: {len(relevant_results_idx)}"
+                )
+                for i, j in enumerate(sort_idx):
+                    current_tnr = tnr_all[relevant_results_idx[j]]
+                    current_tpr = tpr_all[relevant_results_idx[j]]
+
+                    # skip the relevant but not interesting results
+                    if (
+                        i > 0
+                        and tnr_all[relevant_results_idx[sort_idx[i - 1]]] >= 0.995
+                    ):
+                        continue
+                    if (
+                        i < len(sort_idx) - 1
+                        and tpr_all[relevant_results_idx[sort_idx[i + 1]]] >= 0.995
+                    ):
+                        continue
+
+                    print(
+                        f"  - delta = {results[relevant_results_idx[j]]['model_params']['delta']}, theta = {results[relevant_results_idx[j]]['model_params']['theta'] if model_id != 'timedelta' else None}, tnr = {current_tnr:.3f}, tpr = {current_tpr:.3f}"
+                    )
+                print()
 
             # transform to step functions
             tnr_relevant = np.array(list(pair_iterator(tnr_relevant)))[:-1]
@@ -697,15 +718,35 @@ def roc_plot(
                 ax.set_ylabel("True Positive Rate")
 
             # plot indiviadual results
-            ax.scatter(tnr_all, tpr_all, color="r", marker="x", zorder=2.5)
+            ax.scatter(
+                [
+                    tnr_all[i]
+                    for i in range(len(tnr_all))
+                    if i not in relevant_results_idx
+                ],
+                [
+                    tpr_all[i]
+                    for i in range(len(tpr_all))
+                    if i not in relevant_results_idx
+                ],
+                color="b",
+                marker="x",
+                label="all results",
+            )
+            ax.scatter(
+                [tnr_all[i] for i in relevant_results_idx],
+                [tpr_all[i] for i in relevant_results_idx],
+                color="r",
+                marker="x",
+                label="ROC relevant results",
+            )
 
             # plot roc curve
             ax.plot(
                 tnr_relevant,
                 tpr_relevant,
-                label=f"AUC = {compute_auc_score(tnr_relevant, tpr_relevant):.3f}, macro",
+                label=f"AUC = {compute_auc_score(tnr_relevant, tpr_relevant):.3f}, macro ROC",
                 color="r",
-                zorder=2.5,
             )
             ax.vlines(
                 tnr_relevant[-1],
@@ -714,7 +755,6 @@ def roc_plot(
                 ls="--",
                 color="r",
                 alpha=0.5,
-                zorder=2.5,
             )
             ax.hlines(
                 tpr_relevant[0],
@@ -723,7 +763,6 @@ def roc_plot(
                 ls="--",
                 color="r",
                 alpha=0.5,
-                zorder=2.5,
             )
             ax.legend(loc="lower left")
 
@@ -1427,10 +1466,13 @@ if __name__ == "__main__":
             for model_id, config in model_config_generator()
         )
 
-    eval_run_ab(all_delta_theta_vals, all_delta_theta_vals)
+    # eval_run_ab(all_delta_theta_vals, all_delta_theta_vals)
 
-    for delta in alertbert_deltas:
-        eval_run_ab(alertbert_theta_roc_traj_primary, [delta])
-        eval_run_ab(alertbert_theta_roc_traj_secondary, [delta])
-        eval_run_ab(alertbert_theta_roc_traj_tertiary, [delta])
-        eval_run_ab(alertbert_theta_roc_traj_quartary, [delta])
+    for thetas in [
+        alertbert_theta_roc_traj_primary,
+        alertbert_theta_roc_traj_secondary,
+        alertbert_theta_roc_traj_tertiary,
+        alertbert_theta_roc_traj_quartary,
+    ]:
+        for delta in alertbert_deltas:
+            eval_run_ab(thetas, [delta])
