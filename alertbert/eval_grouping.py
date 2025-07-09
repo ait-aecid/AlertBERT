@@ -528,6 +528,8 @@ def compute_auc_score(x: Iterable[float], y: Iterable[float]) -> float:
         float: The computed AUC value.
     """
     assert len(x) == len(y)
+    if len(x) == 0:
+        return np.nan
     s = x[0] * y[0]
     for i in range(1, len(x)):
         s += (x[i] - x[i - 1]) * (y[i] + y[i - 1]) / 2.0
@@ -536,12 +538,14 @@ def compute_auc_score(x: Iterable[float], y: Iterable[float]) -> float:
 
 def get_relevant_roc_results(
     results: list[dict[str, dict | np.ndarray]],
+    label: str = "macro",
 ) -> np.ndarray[int]:
     """From a list of clustering results this function identifies the results defining the ROC curve.
 
     Args:
         results (list[dict[str, dict | np.ndarray]]): The list of results dictionaries
             containing the evaluation metrics for each result.
+        label (str, optional): The label for which the ROC curve should be computed.
 
     Returns:
         np.ndarray[int]: An array of indices of the relevant results that define the ROC curve.
@@ -550,10 +554,17 @@ def get_relevant_roc_results(
     all_valid_results = []  # (idx, tnr, recall)
 
     for i, result in enumerate(results):
-        tnr = result["summary"]["macro"]["macro"]["tnr"][0]
-        recall = result["summary"]["macro"]["macro"]["recall"][0]
+        if label == "macro":
+            tnr = result["summary"]["macro"]["macro"]["tnr"][0]
+            recall = result["summary"]["macro"]["macro"]["recall"][0]
+        else:
+            tnr = result["summary"]["lvl1"][label]["tnr"][0]
+            recall = result["summary"]["lvl1"][label]["recall"][0]
         if not np.isnan(tnr) and not np.isnan(recall):
             all_valid_results.append((i, tnr, recall))
+
+    if len(all_valid_results) == 0:
+        return np.array([], dtype=int)
 
     relevant_results = set([all_valid_results[0][0]])
 
@@ -598,6 +609,9 @@ def roc_plot(
     dim_reduction: int = 2,
     path: str = "saved_models",
     verbose: bool = False,
+    target: str = "hierarchical_event_label",
+    plot_macro_only: bool = False,
+    label_vocabs: dict[str, Vocabulary] = None,
 ) -> None:
     """Plots the ROC curves for the given AlertBert or TimeDelta model and data.
     The figure has 4 subplots, one each for training and validation data where the results were computed including/excluding the false positive alerts.
@@ -610,6 +624,9 @@ def roc_plot(
         path (str, optional): The path to the directory where the respective model is located. Defaults to "saved_models".
         verbose (bool, optional): Whether to print additional information about the relevant results defining the ROC curve. Defaults to False.
     """
+    if not plot_macro_only:
+        lvl_1_labels = get_low_level_labels(label_vocabs[target], 1)
+    cmap = plt.get_cmap("viridis")
 
     # create the figure
     fig, axs = plt.subplots(2, 2, figsize=(10, 10.5), sharex=True, sharey=True)
@@ -731,21 +748,21 @@ def roc_plot(
                 ],
                 color="b",
                 marker="x",
-                label="all results",
+                label="all macro results",
             )
             ax.scatter(
                 [tnr_all[i] for i in relevant_results_idx],
                 [tpr_all[i] for i in relevant_results_idx],
                 color="r",
                 marker="x",
-                label="ROC relevant results",
+                label="ROC relevant macro results",
             )
 
-            # plot roc curve
+            # plot macro roc curve
             ax.plot(
                 tnr_relevant,
                 tpr_relevant,
-                label=f"AUC = {compute_auc_score(tnr_relevant, tpr_relevant):.3f}, macro ROC",
+                label=f"AUC = {compute_auc_score(tnr_relevant, tpr_relevant):.3f}, macro",
                 color="r",
             )
             ax.vlines(
@@ -764,208 +781,57 @@ def roc_plot(
                 color="r",
                 alpha=0.5,
             )
-            ax.legend(loc="lower left")
-
-    plt.tight_layout()
-    plt.show()
-
-
-def roc_plot_old(
-    model_id: str,
-    aitads_a_config: Literal[
-        "original",
-        "simul-attacks",
-        "more-noise-1",
-        "more-noise-2",
-        "more-noise-6",
-        "more-noise-11",
-    ],
-    deltas: list[float],
-    thetas: list[float] = None,
-    layers: tuple[str] = ("embedding", "encoder"),
-    dim_reduction: int = 2,
-    path: str = "saved_models",
-    target: str = "hierarchical_event_label",
-    highlight_result: tuple[float, float] = (None, None),
-    plot_macro_only: bool = False,
-    label_vocabs: dict[str, Vocabulary] = None,
-) -> None:
-    """Plots the ROC curves for the given AlertBert or TimeDelta model and data.
-    The figure has 4 subplots, one each for training and validation data where the results were computed including/excluding the false positive alerts.
-
-    Args:
-        model_id (str): The id of the model. Can be "timedelta" or "mlm_*".
-        aitads_a_config (Literal): The configuration of the AIT-ADS-A dataset.
-        deltas (list[float]): The delta values to be used for the TimeDelta or AlertBert models.
-        thetas (list[float], optional): The theta values to be used for the AlertBert models. Defaults to None.
-        layers (tuple[str], optional): The layers to be used for the AlertBert models. Defaults to ("embedding", "encoder").
-        dim_reduction (int, optional): The dimensionality reduction to be used for the AlertBert models. Defaults to 2.
-        path (str, optional): The path to the directory where the respective model is located. Defaults to "saved_models".
-        target (str, optional): The target label in the dataset. Defaults to "hierarchical_event_label".
-        highlight_result (tuple[float, float], optional): The (delta, theta) values of the results to be highlighted in the plot. Defaults to (None, None).
-        plot_macro_only (bool, optional): Whether to plot only the macro ROC curves. Defaults to False.
-        label_vocabs (dict[str, Vocabulary], optional): The label vocabularies for plotting the non-macro ROC curves. Defaults to None.
-    """
-    # check the provided trajectories
-    if model_id != "timedelta":
-        assert thetas is not None, "Theta values must be provided for AlertBert models."
-        if len(deltas) > 1 and len(thetas) > 1:
-            assert len(deltas) == len(thetas), (
-                f"Delta and theta values must have the same length, found {len(deltas)} and {len(thetas)}."
-            )
-            # both sequences need to be in the correct order relatively to each other
-            assert sorted(deltas), (
-                "For a valid ROC plot delta values have to be non-decreasing!"
-            )
-            assert sorted(thetas, reverse=True), (
-                "For a valid ROC plot thea values have to be non-increasing!"
-            )
-        elif len(deltas) == 1 and len(thetas) > 1:
-            thetas = sorted(thetas, reverse=True)
-            deltas = [deltas[0]] * len(thetas)
-        elif len(deltas) > 1 and len(thetas) == 1:
-            deltas = sorted(deltas)
-            thetas = [thetas[0]] * len(deltas)
-    else:
-        thetas = [None] * len(deltas)
-        deltas = sorted(deltas)
-
-    if not plot_macro_only:
-        lvl_1_labels = get_low_level_labels(label_vocabs[target], 1)
-
-    # create the figure
-    fig, axs = plt.subplots(2, 2, figsize=(12, 13), sharex=True, sharey=True)
-    title_str = f"ROC plots for: model = {model_id}, data = {aitads_a_config}"
-    if model_id != "timedelta":
-        title_str += f", {'input' if layers == 1 else 'output'} embeddings, {dim_reduction} dimensions"
-    fig.suptitle(title_str)
-
-    cmap = plt.get_cmap("viridis")
-
-    for row in range(2):
-        for col in range(2):
-            split = "train" if not col else "val"
-            noise = bool(row)
-
-            # load the results
-            results = []
-            data_points = []
-
-            for delta, theta in zip(deltas, thetas):
-                grouping_model_params = get_grouping_model_params(
-                    model_id,
-                    delta,
-                    theta,
-                    layers,
-                    dim_reduction,
-                    data_split=split,
-                )
-                file_name = get_eval_file_name(
-                    grouping_model_params, aitads_a_config, noise=noise
-                )
-                try:  # noqa: SIM105
-                    results.append(
-                        load_results(
-                            path=path, model_id=model_id, name=file_name, split=split
-                        )
-                    )
-                    data_points.append((delta, theta))
-                except FileNotFoundError:
-                    pass
-            if len(results) == 0:
-                continue
-
-            # plot ROC curves
-            ax = axs[row, col]
-            ax.set_box_aspect(1)
-            ax.grid()
-            ax.set_xlim(-0.01, 1.01)
-            ax.set_ylim(-0.01, 1.01)
-            ax.set_title(
-                f"{split} data, {'incl' if noise else 'excl'} fp alerts, {len(data_points)} data points"
-            )
-            if row == 1:
-                ax.set_xlabel("True Negative Rate")
-            if col == 0:
-                ax.set_ylabel("True Positive Rate")
-
-            # macro
-            tpr = []
-            tnr = []
-            for result in results:
-                re = result["summary"]["macro"]["macro"]["recall"][0]
-                tn = result["summary"]["macro"]["macro"]["tnr"][0]
-                if re is not None and tn is not None:
-                    tpr.append(re)
-                    tnr.append(tn)
-                    if highlight_result[0] == result["model_params"]["delta"]:
-                        try:
-                            theta = result["model_params"]["theta"]
-                            label_str = f"delta = {highlight_result[0]}, theta = {highlight_result[1]}"
-                        except KeyError:
-                            theta = None
-                            label_str = f"delta = {highlight_result[0]}"
-                        if theta == highlight_result[1]:
-                            ax.scatter(tn, re, color="r", marker="x", label=label_str, zorder=2.5)
-
-            tnr = np.array(tnr)
-            tpr = np.array(tpr)
-            ax.plot(
-                tnr,
-                tpr,
-                label=f"AUC = {compute_auc_score(tnr, tpr):.3f}, macro",
-                color="r",
-                zorder=2.5,
-            )
-            ax.hlines(tpr[-1], 0.0, tnr[-1], ls="--", color="r", alpha=0.5, zorder=2.5)
-            ax.vlines(tnr[0], 0.0, tpr[0], ls="--", color="r", alpha=0.5, zorder=2.5)
 
             # individual labels
             if not plot_macro_only:
                 for i, label in enumerate(lvl_1_labels):
-                    tpr = []
-                    tnr = []
-                    for result in results:
-                        re = result["summary"]["lvl1"][label]["recall"][0]
-                        tn = result["summary"]["lvl1"][label]["tnr"][0]
-                        if re is not None and tn is not None:
-                            tpr.append(re)
-                            tnr.append(tn)
-                            if highlight_result[0] == result["model_params"]["delta"]:
-                                try:
-                                    theta = result["model_params"]["theta"]
-                                except KeyError:
-                                    theta = None
-                                if theta == highlight_result[1]:
-                                    ax.scatter(
-                                        tn,
-                                        re,
-                                        color=cmap(i / (len(lvl_1_labels) - 1)),
-                                        marker="x",
-                                        alpha=0.5,
-                                    )
+                    relevant_results_idx = get_relevant_roc_results(results, label)
 
-                    tnr = np.array(tnr)
-                    tpr = np.array(tpr)
+                    tpr_all = np.array(
+                        [
+                            result["summary"]["lvl1"][label]["recall"][0]
+                            for result in results
+                        ]
+                    )
+                    tnr_all = np.array(
+                        [
+                            result["summary"]["lvl1"][label]["tnr"][0]
+                            for result in results
+                        ]
+                    )
+
+                    tpr_relevant = tpr_all[relevant_results_idx]
+                    tnr_relevant = tnr_all[relevant_results_idx]
+
+                    # sort by tnr
+                    sort_idx = np.lexsort((tnr_relevant, -1 * tpr_relevant))
+                    tnr_relevant = tnr_relevant[sort_idx]
+                    tpr_relevant = tpr_relevant[sort_idx]
+
+                    tnr_relevant = np.array(list(pair_iterator(tnr_relevant)))[:-1]
+                    tpr_relevant = np.array(list(pair_iterator(tpr_relevant)))[1:]
+
                     ax.plot(
-                        tnr,
-                        tpr,
-                        label=f"AUC = {compute_auc_score(tnr, tpr):.3f}, {label}",
+                        tnr_relevant,
+                        tpr_relevant,
+                        label=f"AUC = {compute_auc_score(tnr_relevant, tpr_relevant):.3f}, {label}",
                         color=cmap(i / (len(lvl_1_labels) - 1)),
                         alpha=0.5,
                     )
+                    if len(tnr_relevant) == 0:
+                        continue
                     ax.hlines(
-                        tpr[-1],
+                        tpr_relevant[0],
                         0.0,
-                        tnr[-1],
+                        tnr_relevant[0],
                         ls="--",
                         color=cmap(i / (len(lvl_1_labels) - 1)),
                         alpha=0.25,
                     )
                     ax.vlines(
-                        tnr[0],
+                        tnr_relevant[-1],
                         0.0,
-                        tpr[0],
+                        tpr_relevant[-1],
                         ls="--",
                         color=cmap(i / (len(lvl_1_labels) - 1)),
                         alpha=0.25,
