@@ -31,7 +31,7 @@ Alternatively, you can also build the dataset from source by the following recip
 
 To prepare the AIT-ADS (including its labels) for training and evaluation from source follow these steps:
 
-1. Download and unzip the three datasets into their respective dicrectories listed below.  
+1. Download and unzip the three datasets into their respective directories listed below.  
 After this step the `alerts_json` directory should contain the files `scenario_aminer.json` and `scenario_wazuh.json` for each of the eight scenarios of AIT-ADS.
     + AIT Alert Dataset ➡️ `alerts_json`
     + AIT Log Dataset V2.0 ➡️ `aitldsv2`
@@ -46,7 +46,7 @@ And the files `alerts_csv/scenario_alerts.csv` contain the labels for the alerts
 Thus, the last step:
 
 3. Run `unite_alerts_labels.py`.  
-This script will simplify the situation described above by combining all the alerts and their labels, sorted by timestamps, into the files `alerts_json/scenario.json`for each scenario.  
+This script will simplify the situation described above by combining all the alerts and their labels, sorted by timestamps, into the files `alerts_json/scenario.json` for each scenario.  
 Additionally, the script will create the files `alerts_json/scenario_light.json`, which have the same contents except for the raw alert data, and can be used to speed up loading the data if the raw alerts are not required.
 
 Done.
