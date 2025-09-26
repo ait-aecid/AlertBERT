@@ -442,6 +442,7 @@ def compute_roc_trajectories(
     layers: tuple[str] = ("embedding", "encoder"),
     dim_reduction: int = 2,
     path: str = "saved_models",
+    test_mode: bool = False,
 ) -> None:
     """Computes the ROC trajectories for the given model and data.
 
@@ -453,6 +454,7 @@ def compute_roc_trajectories(
         layers (tuple[str], optional): The layers to be used for the models. Defaults to ("embedding", "encoder").
         dim_reduction (int, optional): The dimensionality reduction to be used for the models. Defaults to 2.
         path (str, optional): The path to the directory where the respective model is located. Defaults to "saved_models".
+        test_mode (bool, optional): Whether to compute the results on the test set instead of the training/validation set. Defaults to False.
     """
     if model_id != "timedelta":
         assert thetas is not None, "Theta values must be provided for AlertBert models."
@@ -471,6 +473,8 @@ def compute_roc_trajectories(
     logging.info(
         f"{model_id:<33} - Checking ROC trajectory for model {model_id} on data config {aitads_a_config} ..."
     )
+    if test_mode:
+        logging.info(f"{model_id:<33} - Test mode enabled, using test data!")
 
     not_found_results = []
 
@@ -486,21 +490,23 @@ def compute_roc_trajectories(
             theta,
             layers,
             dim_reduction,
-            data_split="train",
+            data_split="train" if not test_mode else "test",
         )
         file_name = get_eval_file_name(
             grouping_model_params, aitads_a_config, noise=True
         )
         logging.info(f"{model_id:<33} - Searching for {file_name}")
         try:
-            load_results(path=path, model_id=model_id, name=file_name, split="train")
+            load_results(path=path, model_id=model_id, name=file_name, split="train" if not test_mode else "test")
             logging.info(f"{model_id:<33} - Found!")
         except FileNotFoundError:
             logging.info(f"{model_id:<33} - Not found, will compute results ...")
             not_found_results.append([delta, theta])
 
     if len(not_found_results) > 0:
-        logging.info(f"{model_id:<33} - Found {len(not_found_results)} results to compute ...")
+        logging.info(
+            f"{model_id:<33} - Found {len(not_found_results)} results to compute ..."
+        )
         deltas = [i[0] for i in not_found_results]
         thetas = [i[1] for i in not_found_results]
         main(
@@ -511,6 +517,7 @@ def compute_roc_trajectories(
             layers=layers,
             dim_reduction=dim_reduction,
             path=path,
+            test_mode=test_mode,
         )
         logging.info(f"{model_id:<33} - All results computed!")
     else:
@@ -842,6 +849,258 @@ def roc_plot(
     plt.tight_layout()
     plt.show()
 
+def roc_test_plot(
+    model_id: str,
+    aitads_a_config: Literal[
+        "original",
+        "simul-attacks",
+        "more-noise-1",
+        "more-noise-2",
+        "more-noise-6",
+        "more-noise-11",
+    ],
+    layers: tuple[str] = ("embedding", "encoder"),
+    dim_reduction: int = 2,
+    path: str = "saved_models",
+    verbose: bool = False,
+    target: str = "hierarchical_event_label",
+    plot_macro_only: bool = False,
+    label_vocabs: dict[str, Vocabulary] = None,
+) -> None:
+    """Plots the ROC curves for the given AlertBert or TimeDelta model and test data.
+    The figure has 2 subplots, one each for the results computed including/excluding the false positive alerts.
+
+    Args:
+        model_id (str): The id of the model. Can be "timedelta" or "mlm_*".
+        aitads_a_config (Literal): The configuration of the AIT-ADS-A dataset.
+        layers (tuple[str], optional): The layers to be used for the AlertBert models. Defaults to ("embedding", "encoder").
+        dim_reduction (int, optional): The dimensionality reduction to be used for the AlertBert models. Defaults to 2.
+        path (str, optional): The path to the directory where the respective model is located. Defaults to "saved_models".
+        verbose (bool, optional): Whether to print additional information about the relevant results defining the ROC curve. Defaults to False.
+    """
+    if not plot_macro_only:
+        lvl_1_labels = get_low_level_labels(label_vocabs[target], 1)
+        lvl_1_labels.remove("dns_scan")
+    cmap = plt.get_cmap("viridis")
+
+    # create the figure
+    fig1, ax1 = plt.subplots(figsize=(5, 5))
+    fig2, ax2 = plt.subplots(figsize=(5, 5))
+    axs = [ax1, ax2]
+    figs = [fig1, fig2]
+    title_str = f"ROC_{model_id}_{aitads_a_config}"
+    if model_id != "timedelta":
+        title_str += f"_{'input' if layers == 1 else 'output'}_emb_{dim_reduction}_dim"
+    # fig.suptitle(title_str)
+
+    for col in range(2):
+        split = "test"
+        noise = bool(col)
+
+        # load the results
+        results = []
+        seen_results = set()
+
+        for delta in all_delta_theta_vals:
+            for theta in all_delta_theta_vals:
+                grouping_model_params = get_grouping_model_params(
+                    model_id,
+                    delta,
+                    theta,
+                    layers,
+                    dim_reduction,
+                    data_split=split,
+                )
+                file_name = get_eval_file_name(
+                    grouping_model_params, aitads_a_config, noise=noise
+                )
+                if file_name not in seen_results:
+                    try:  # noqa: SIM105
+                        results.append(
+                            load_results(
+                                path=path,
+                                model_id=model_id,
+                                name=file_name,
+                                split=split,
+                            )
+                        )
+                    except FileNotFoundError:
+                        pass
+                seen_results.add(file_name)
+        if len(results) == 0:
+            continue
+
+        # find relevant results
+        relevant_results_idx = get_relevant_roc_results(results)
+
+        tpr_all = np.array(
+            [result["summary"]["macro"]["macro"]["recall"][0] for result in results]
+        )
+        tnr_all = np.array(
+            [result["summary"]["macro"]["macro"]["tnr"][0] for result in results]
+        )
+
+        tpr_relevant = tpr_all[relevant_results_idx]
+        tnr_relevant = tnr_all[relevant_results_idx]
+
+        # sort by tnr
+        sort_idx = np.lexsort((tnr_relevant, -1 * tpr_relevant))
+        tnr_relevant = tnr_relevant[sort_idx]
+        tpr_relevant = tpr_relevant[sort_idx]
+
+        if verbose:
+            print(
+                f"relevant results for {split} data, {'incl' if noise else 'excl'} fp alerts: {len(relevant_results_idx)}"
+            )
+            for i, j in enumerate(sort_idx):
+                current_tnr = tnr_all[relevant_results_idx[j]]
+                current_tpr = tpr_all[relevant_results_idx[j]]
+
+                # skip the relevant but not interesting results
+                if (
+                    i > 0
+                    and tnr_all[relevant_results_idx[sort_idx[i - 1]]] >= 0.995
+                ):
+                    continue
+                if (
+                    i < len(sort_idx) - 1
+                    and tpr_all[relevant_results_idx[sort_idx[i + 1]]] >= 0.995
+                ):
+                    continue
+
+                print(
+                    f"  - delta = {results[relevant_results_idx[j]]['model_params']['delta']}, theta = {results[relevant_results_idx[j]]['model_params']['theta'] if model_id != 'timedelta' else None}, tnr = {current_tnr:.3f}, tpr = {current_tpr:.3f}"
+                )
+            print()
+
+        # transform to step functions
+        tnr_relevant = np.array(list(pair_iterator(tnr_relevant)))[:-1]
+        tpr_relevant = np.array(list(pair_iterator(tpr_relevant)))[1:]
+
+        # plot ROC curves
+        ax = axs[col]
+        fig = figs[col]
+        ax.set_box_aspect(1)
+        ax.grid(alpha=0.5)
+        ax.set_xlim(0., 1.005)
+        ax.set_ylim(0., 1.005)
+        # ax.set_title(f"{split} data, {'incl' if noise else 'excl'} fp alerts, {len(results)} data points, {len(relevant_results_idx)} relevant")
+        save_str = f"{title_str}_{'incl' if noise else 'excl'}_noise"
+        ax.set_xlabel("True Negative Rate")
+        ax.set_ylabel("True Positive Rate")
+
+        # plot indiviadual results
+        """
+        ax.scatter(
+            [
+                tnr_all[i]
+                for i in range(len(tnr_all))
+                if i not in relevant_results_idx
+            ],
+            [
+                tpr_all[i]
+                for i in range(len(tpr_all))
+                if i not in relevant_results_idx
+            ],
+            color="b",
+            marker="x",
+            label="all macro results",
+        )
+        ax.scatter(
+            [tnr_all[i] for i in relevant_results_idx],
+            [tpr_all[i] for i in relevant_results_idx],
+            color="r",
+            marker="x",
+            label="ROC relevant macro results",
+        )"""
+
+        # plot macro roc curve
+        ax.plot(
+            tnr_relevant,
+            tpr_relevant,
+            label="macro", #f"AUC = {compute_auc_score(tnr_relevant, tpr_relevant):.3f}, macro",
+            color="r",
+            zorder=10,
+        )
+        ax.vlines(
+            tnr_relevant[-1],
+            0.0,
+            tpr_relevant[-1],
+            #ls="--",
+            color="r",
+            #alpha=0.5,
+            zorder=10,
+        )
+        ax.hlines(
+            tpr_relevant[0],
+            0.0,
+            tnr_relevant[0],
+            #ls="--",
+            color="r",
+            #alpha=0.5,
+            zorder=10,
+        )
+
+        # individual labels
+        if not plot_macro_only:
+            for i, label in enumerate(lvl_1_labels):
+                relevant_results_idx = get_relevant_roc_results(results, label)
+
+                tpr_all = np.array(
+                    [
+                        result["summary"]["lvl1"][label]["recall"][0]
+                        for result in results
+                    ]
+                )
+                tnr_all = np.array(
+                    [
+                        result["summary"]["lvl1"][label]["tnr"][0]
+                        for result in results
+                    ]
+                )
+
+                tpr_relevant = tpr_all[relevant_results_idx]
+                tnr_relevant = tnr_all[relevant_results_idx]
+
+                # sort by tnr
+                sort_idx = np.lexsort((tnr_relevant, -1 * tpr_relevant))
+                tnr_relevant = tnr_relevant[sort_idx]
+                tpr_relevant = tpr_relevant[sort_idx]
+
+                tnr_relevant = np.array(list(pair_iterator(tnr_relevant)))[:-1]
+                tpr_relevant = np.array(list(pair_iterator(tpr_relevant)))[1:]
+
+                ax.plot(
+                    tnr_relevant,
+                    tpr_relevant,
+                    label=label, # f"AUC = {compute_auc_score(tnr_relevant, tpr_relevant):.3f}, {label}",
+                    color=cmap(i / (len(lvl_1_labels) - 1)),
+                    #alpha=0.8,
+                )
+                if len(tnr_relevant) == 0:
+                    continue
+                ax.hlines(
+                    tpr_relevant[0],
+                    0.0,
+                    tnr_relevant[0],
+                    #ls="--",
+                    color=cmap(i / (len(lvl_1_labels) - 1)),
+                    #alpha=0.5,
+                )
+                ax.vlines(
+                    tnr_relevant[-1],
+                    0.0,
+                    tpr_relevant[-1],
+                    #ls="--",
+                    color=cmap(i / (len(lvl_1_labels) - 1)),
+                    #alpha=0.5,
+                )
+
+            ax.legend(loc="lower left")
+
+        fig.tight_layout()
+        fig.savefig(f"../paper_figures/{save_str}.pdf")
+    plt.show()
 
 # result plotting functions
 
@@ -961,6 +1220,7 @@ def pprint_eval_report(
     exclude_raw_metrics: bool = True,
     hierarchical_label_levels: Iterable[int] = [0, 1],
 ) -> None:
+    # TODO: test data
     """Pretty prints the evaluation results of a clustering model."""
     level_labels = {
         0: ["macro"],
@@ -984,11 +1244,15 @@ def pprint_eval_report(
                 f"{label:<{label_str_len}} | "
                 + " | ".join(
                     [
-                        f"{train_results['summary'][level_str][label][m][0]:<5.3f}±{
+                        f"""{
+                            train_results['summary'][level_str][label][m][0]:<5.3f
+                        }±{
                             train_results['summary'][level_str][label][m][1]:<5.3f
-                        } | {val_results['summary'][level_str][label][m][0]:<5.3f}±{
+                        } | {
+                            val_results['summary'][level_str][label][m][0]:<5.3f
+                        }±{
                             val_results['summary'][level_str][label][m][1]:<5.3f
-                        }"
+                        }"""
                         for m in used_metrics
                     ]
                 )
@@ -998,13 +1262,17 @@ def pprint_eval_report(
 def pprint_eval_diff(
     train_results1: dict[str, dict | np.ndarray],
     val_results1: dict[str, dict | np.ndarray],
+    test_results1: dict[str, dict | np.ndarray],
     train_results2: dict[str, dict | np.ndarray],
     val_results2: dict[str, dict | np.ndarray],
+    test_results2: dict[str, dict | np.ndarray],
     target_vocab: Vocabulary,
     excluded_label: str = "-",
     exclude_raw_metrics: bool = True,
     hierarchical_label_levels: Iterable[int] = [0, 1],
+    test_mode: bool = False,
 ) -> None:
+    # TODO: test data
     """Pretty prints the difference of the evaluation results of two clustering models."""
     level_labels = {
         0: ["macro"],
@@ -1024,21 +1292,24 @@ def pprint_eval_diff(
         for label in level_labels[level]:
             if label == excluded_label:
                 continue
-            print(
-                f"{label:<{label_str_len}} | "
-                + " | ".join(
-                    [
-                        f"{
-                            train_results2['summary'][level_str][label][m][0]
-                            - train_results1['summary'][level_str][label][m][0]:< 7.3f
-                        } | {
-                            val_results2['summary'][level_str][label][m][0]
-                            - val_results1['summary'][level_str][label][m][0]:< 7.3f
-                        }"
-                        for m in used_metrics
-                    ]
+            if not test_mode:
+                print(
+                    f"{label:<{label_str_len}} | "
+                    + " | ".join(
+                        [
+                            f"""{
+                                train_results2['summary'][level_str][label][m][0]
+                                - train_results1['summary'][level_str][label][m][0]:< 7.3f
+                            } | {
+                                val_results2['summary'][level_str][label][m][0]
+                                - val_results1['summary'][level_str][label][m][0]:< 7.3f
+                            }"""
+                            for m in used_metrics
+                        ]
+                    )
                 )
-            )
+            else:
+                pass
 
 
 # main functions
@@ -1084,50 +1355,70 @@ def get_grouping_model_params(
 def compute_all_eval_results(
     grouping_model: AbstractDatasetGroupingModel,
     label_vocabs: dict,
-    train_data: AITAlertDataset,
-    val_data: AITAlertDataset,
+    train_data: AITAlertDataset = None,
+    val_data: AITAlertDataset = None,
+    test_data: AITAlertDataset = None,
 ) -> tuple[dict, dict, dict, dict]:
     """Computes all evaluation results for the given model and data.
 
     Args:
         grouping_model (AbstractDatasetGroupingModel): The alert grouping model to be evaluated.
         label_vocabs (dict): The vocabularies containing the target labels.
-        train_data (AITAlertDataset): The training dataset to be evaluated.
-        val_data (AITAlertDataset): The validation dataset to be evaluated.
+        train_data (AITAlertDataset, optional): The training dataset to be evaluated.
+        val_data (AITAlertDataset, optional): The validation dataset to be evaluated.
+        test_data (AITAlertDataset, optional): The test dataset to be evaluated. Defaults to None.
     """
-    train_stats_noise, cont_matrices = eval_alert_grouping(
-        model=grouping_model,
-        target_vocab=label_vocabs["hierarchical_event_label"],
-        data=train_data,
-        ignore_excluded_macro_label=False,
-    )
-    train_stats_clean, _ = eval_alert_grouping(
-        target_vocab=label_vocabs["hierarchical_event_label"],
-        contingency_matrices=cont_matrices,
-    )
-    val_stats_noise, cont_matrices = eval_alert_grouping(
-        model=grouping_model,
-        target_vocab=label_vocabs["hierarchical_event_label"],
-        data=val_data,
-        ignore_excluded_macro_label=False,
-    )
-    val_stats_clean, _ = eval_alert_grouping(
-        target_vocab=label_vocabs["hierarchical_event_label"],
-        contingency_matrices=cont_matrices,
-    )
-    return (
-        train_stats_noise,
-        val_stats_noise,
-        train_stats_clean,
-        val_stats_clean,
-    )
+    results = {}
+    if train_data:
+        results["train"] = {}
+        train_stats_noise, cont_matrices = eval_alert_grouping(
+            model=grouping_model,
+            target_vocab=label_vocabs["hierarchical_event_label"],
+            data=train_data,
+            ignore_excluded_macro_label=False,
+        )
+        train_stats_clean, _ = eval_alert_grouping(
+            target_vocab=label_vocabs["hierarchical_event_label"],
+            contingency_matrices=cont_matrices,
+        )
+        results["train"]["noise"] = train_stats_noise
+        results["train"]["clean"] = train_stats_clean
+    
+    if val_data:
+        results["val"] = {}
+        val_stats_noise, cont_matrices = eval_alert_grouping(
+            model=grouping_model,
+            target_vocab=label_vocabs["hierarchical_event_label"],
+            data=val_data,
+            ignore_excluded_macro_label=False,
+        )
+        val_stats_clean, _ = eval_alert_grouping(
+            target_vocab=label_vocabs["hierarchical_event_label"],
+            contingency_matrices=cont_matrices,
+        )
+        results["val"]["noise"] = val_stats_noise
+        results["val"]["clean"] = val_stats_clean
+    
+    if test_data:
+        results["test"] = {}
+        test_stats_noise, cont_matrices = eval_alert_grouping(
+            model=grouping_model,
+            target_vocab=label_vocabs["hierarchical_event_label"],
+            data=test_data,
+            ignore_excluded_macro_label=False,
+        )
+        test_stats_clean, _ = eval_alert_grouping(
+            target_vocab=label_vocabs["hierarchical_event_label"],
+            contingency_matrices=cont_matrices,
+        )
+        results["test"]["noise"] = test_stats_noise
+        results["test"]["clean"] = test_stats_clean
+    
+    return results
 
 
 def save_all_eval_results(
-    train_stats_noise: dict,
-    val_stats_noise: dict,
-    train_stats_clean: dict,
-    val_stats_clean: dict,
+    results: dict,
     grouping_model_params: dict,
     aitads_a_config: str,
     path: str,
@@ -1135,44 +1426,60 @@ def save_all_eval_results(
     """Saves all evaluation results to pickle files.
 
     Args:
-        train_stats_noise (dict): The training results dict for the noisy results.
-        val_stats_noise (dict): The validation results dict for the noisy results.
-        train_stats_clean (dict): The training results dict for the clean results.
-        val_stats_clean (dict): The validation results dict for the clean results.
+        results (dict): The dict containing the noisy/clean training/val/test results.
         aitads_a_config (str): The configuration of the AIT-ADS-A dataset.
         path (str): The path to the directory where the respective model is located.
     """
-    train_stats_noise["model_params"] = grouping_model_params
-    train_stats_noise["model_params"]["data_split"] = "train"
-    save_results(
-        train_stats_noise,
-        path,
-        get_eval_file_name(grouping_model_params, aitads_a_config, noise=True),
-    )
+    if "train" in results:
+        results["train"]["noise"]["model_params"] = grouping_model_params
+        results["train"]["noise"]["model_params"]["data_split"] = "train"
+        save_results(
+            results["train"]["noise"],
+            path,
+            get_eval_file_name(grouping_model_params, aitads_a_config, noise=True),
+        )
 
-    val_stats_noise["model_params"] = grouping_model_params
-    val_stats_noise["model_params"]["data_split"] = "val"
-    save_results(
-        val_stats_noise,
-        path,
-        get_eval_file_name(grouping_model_params, aitads_a_config, noise=True),
-    )
+        results["train"]["clean"]["model_params"] = grouping_model_params
+        results["train"]["clean"]["model_params"]["data_split"] = "train"
+        save_results(
+            results["train"]["clean"],
+            path,
+            get_eval_file_name(grouping_model_params, aitads_a_config, noise=False),
+        )
 
-    train_stats_clean["model_params"] = grouping_model_params
-    train_stats_clean["model_params"]["data_split"] = "train"
-    save_results(
-        train_stats_clean,
-        path,
-        get_eval_file_name(grouping_model_params, aitads_a_config, noise=False),
-    )
+    if "val" in results:
+        results["val"]["noise"]["model_params"] = grouping_model_params
+        results["val"]["noise"]["model_params"]["data_split"] = "val"
+        save_results(
+            results["val"]["noise"],
+            path,
+            get_eval_file_name(grouping_model_params, aitads_a_config, noise=True),
+        )
 
-    val_stats_clean["model_params"] = grouping_model_params
-    val_stats_clean["model_params"]["data_split"] = "val"
-    save_results(
-        val_stats_clean,
-        path,
-        get_eval_file_name(grouping_model_params, aitads_a_config, noise=False),
-    )
+        results["val"]["clean"]["model_params"] = grouping_model_params
+        results["val"]["clean"]["model_params"]["data_split"] = "val"
+        save_results(
+            results["val"]["clean"],
+            path,
+            get_eval_file_name(grouping_model_params, aitads_a_config, noise=False),
+        )
+
+    if "test" in results:
+        results["test"]["noise"]["model_params"] = grouping_model_params
+        results["test"]["noise"]["model_params"]["data_split"] = "test"
+        save_results(
+            results["test"]["noise"],
+            path,
+            get_eval_file_name(grouping_model_params, aitads_a_config, noise=True),
+        )
+
+        results["test"]["clean"]["model_params"] = grouping_model_params
+        results["test"]["clean"]["model_params"]["data_split"] = "test"
+        save_results(
+            results["test"]["clean"],
+            path,
+            get_eval_file_name(grouping_model_params, aitads_a_config, noise=False),
+        )
 
 
 def main(
@@ -1190,9 +1497,10 @@ def main(
     layers: tuple[str] = ("embedding", "encoder"),
     dim_reduction: int = 2,
     path: str = "saved_models",
+    test_mode: bool = False,
 ) -> None:
     """Main function for evaluating alert grouping models.
-    Loads the specified models and evaluates them on the training and validation sets of the specified augmentation of the AIT Alert dataset.
+    Loads the specified models and evaluates them on the training and validation (or test) sets of the specified augmentation of the AIT Alert dataset.
     It is possible to either evaluate multiple models with the same delta and theta values or to evaluate a single model with different delta and theta values.
     TimeDelta models can only be evaluated in the single model case.
 
@@ -1204,6 +1512,7 @@ def main(
         layers (tuple[str], optional): The layers to be used for the models. Defaults to ("embedding", "encoder").
         dim_reduction (int, optional): The dimensionality reduction to be used for the models. Defaults to 2.
         path (str, optional): The path to the directory where the respective model is located. Defaults to "saved_models".
+        test_mode (bool, optional): Whether to use test data instead of training/validation data. Defaults to False.
     """
     if len(model_ids) == 1 and model_ids[0] == "timedelta":
         timedelta = True
@@ -1229,8 +1538,14 @@ def main(
     write_logs = False
     log_to_stdout() if write_logs else None
     logging.info(f"Loading data config {aitads_a_config} ...") if write_logs else None
-    train_data = AITAlertDataset(split="train", configuration=aitads_a_config)
-    val_data = AITAlertDataset(split="val", configuration=aitads_a_config)
+    if not test_mode:
+        train_data = AITAlertDataset(split="train", configuration=aitads_a_config)
+        val_data = AITAlertDataset(split="val", configuration=aitads_a_config)
+        test_data = None
+    else:
+        train_data = None
+        val_data = None
+        test_data = AITAlertDataset(split="test", configuration=aitads_a_config)
     label_vocabs = load_ground_truth_label_vocabs(path, aitads_a_config)
 
     if timedelta:
@@ -1255,7 +1570,9 @@ def main(
                     model_id="timedelta",
                     delta=deltas[i],
                 )
-                logging.info(f"Evaluating delta = {deltas[i]} ...") if write_logs else None
+                logging.info(
+                    f"Evaluating delta = {deltas[i]} ..."
+                ) if write_logs else None
                 grouping_model = TimeDelta(delta=deltas[i])
             else:
                 logging.info(f"Evaluating model {key} ...") if write_logs else None
@@ -1276,12 +1593,12 @@ def main(
 
             # evaluate model
             results = compute_all_eval_results(
-                grouping_model, label_vocabs, train_data, val_data
+                grouping_model, label_vocabs, train_data, val_data, test_data
             )
 
             # save results
             save_all_eval_results(
-                *results,
+                results,
                 grouping_model_params,
                 aitads_a_config,
                 path,
@@ -1300,16 +1617,19 @@ if __name__ == "__main__":
         "more-noise-1",
     ]
 
+    test_mode = False
+
     def eval_run_td() -> None:
         for config in data_configs:
             compute_roc_trajectories(
                 model_id="timedelta",
                 aitads_a_config=config,
                 deltas=timedelta_roc_traj_all,
+                test_mode=test_mode,
             )
             gc.collect()
 
-    # eval_run_td()
+    eval_run_td()
 
     def model_config_generator() -> Iterable[tuple[str, str]]:
         for config in data_configs:
@@ -1328,6 +1648,7 @@ if __name__ == "__main__":
                 aitads_a_config=config,
                 deltas=deltas,
                 thetas=theta_traj,
+                test_mode=test_mode,
             )
             for model_id, config in model_config_generator()
         )
