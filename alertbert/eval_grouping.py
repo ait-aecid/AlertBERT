@@ -602,6 +602,62 @@ def pair_iterator(iterable: Iterable) -> Iterable:
         yield i
 
 
+def load_roc_results(
+    model_id: str,
+    layers: tuple[str],
+    dim_reduction: int,
+    aitads_a_config: str,
+    noise: bool,
+    split: str,
+    path: str,
+) -> list[dict[str, dict | np.ndarray]]:
+    """Retreives all computed results for the given model and data configuration.
+
+    Args:
+        model_id (str): The id of the model. Can be "timedelta" or "mlm_*".
+        layers (tuple[str]): The layers to be used for the AlertBert models.
+        dim_reduction (int): The dimensionality reduction to be used for the AlertBert models.
+        aitads_a_config (Literal): The configuration of the AIT-ADS-A dataset.
+        noise (bool): Whether to load results including or excluding false positive alerts.
+        split (str): The data split to load results for. Can be "train" or "val".
+        path (str): The path to the directory where the respective model is located.
+
+    Returns:
+        list[dict[str, dict | np.ndarray]]: A list of results dictionaries for the given model and data configuration.
+    """
+
+    results = []
+    seen_results = set()
+
+    for delta in all_delta_theta_vals:
+        for theta in all_delta_theta_vals:
+            grouping_model_params = get_grouping_model_params(
+                model_id,
+                delta,
+                theta,
+                layers,
+                dim_reduction,
+                data_split=split,
+            )
+            file_name = get_eval_file_name(
+                grouping_model_params, aitads_a_config, noise=noise
+            )
+            if file_name not in seen_results:
+                try:  # noqa: SIM105
+                    results.append(
+                        load_results(
+                            path=path,
+                            model_id=model_id,
+                            name=file_name,
+                            split=split,
+                        )
+                    )
+                except FileNotFoundError:
+                    pass
+            seen_results.add(file_name)
+    return results
+
+
 def roc_plot(
     model_id: str,
     aitads_a_config: Literal[
@@ -648,35 +704,7 @@ def roc_plot(
             noise = bool(row)
 
             # load the results
-            results = []
-            seen_results = set()
-
-            for delta in all_delta_theta_vals:
-                for theta in all_delta_theta_vals:
-                    grouping_model_params = get_grouping_model_params(
-                        model_id,
-                        delta,
-                        theta,
-                        layers,
-                        dim_reduction,
-                        data_split=split,
-                    )
-                    file_name = get_eval_file_name(
-                        grouping_model_params, aitads_a_config, noise=noise
-                    )
-                    if file_name not in seen_results:
-                        try:  # noqa: SIM105
-                            results.append(
-                                load_results(
-                                    path=path,
-                                    model_id=model_id,
-                                    name=file_name,
-                                    split=split,
-                                )
-                            )
-                        except FileNotFoundError:
-                            pass
-                    seen_results.add(file_name)
+            results = load_roc_results(model_id, layers, dim_reduction, aitads_a_config, noise, split, path)
             if len(results) == 0:
                 continue
 
@@ -866,9 +894,11 @@ def roc_test_plot(
     target: str = "hierarchical_event_label",
     plot_macro_only: bool = False,
     label_vocabs: dict[str, Vocabulary] = None,
+    save_mode: bool = False,
+    print_auc_table: bool = True,
 ) -> None:
     """Plots the ROC curves for the given AlertBert or TimeDelta model and test data.
-    The figure has 2 subplots, one each for the results computed including/excluding the false positive alerts.
+    The function produces 2 figures, one each for the results computed including/excluding the false positive alerts.
 
     Args:
         model_id (str): The id of the model. Can be "timedelta" or "mlm_*".
@@ -877,6 +907,7 @@ def roc_test_plot(
         dim_reduction (int, optional): The dimensionality reduction to be used for the AlertBert models. Defaults to 2.
         path (str, optional): The path to the directory where the respective model is located. Defaults to "saved_models".
         verbose (bool, optional): Whether to print additional information about the relevant results defining the ROC curve. Defaults to False.
+        save_mode (bool, optional): Whether to save the figures instead of just displaying them. Defaults to False.
     """
     if not plot_macro_only:
         lvl_1_labels = get_low_level_labels(label_vocabs[target], 1)
@@ -891,42 +922,16 @@ def roc_test_plot(
     title_str = f"ROC_{model_id}_{aitads_a_config}"
     if model_id != "timedelta":
         title_str += f"_{'input' if layers == 1 else 'output'}_emb_{dim_reduction}_dim"
-    # fig.suptitle(title_str)
 
     for col in range(2):
         split = "test"
         noise = bool(col)
+        print(f"{'Including' if noise else 'Excluding'} false positive alerts:")
 
         # load the results
-        results = []
-        seen_results = set()
-
-        for delta in all_delta_theta_vals:
-            for theta in all_delta_theta_vals:
-                grouping_model_params = get_grouping_model_params(
-                    model_id,
-                    delta,
-                    theta,
-                    layers,
-                    dim_reduction,
-                    data_split=split,
-                )
-                file_name = get_eval_file_name(
-                    grouping_model_params, aitads_a_config, noise=noise
-                )
-                if file_name not in seen_results:
-                    try:  # noqa: SIM105
-                        results.append(
-                            load_results(
-                                path=path,
-                                model_id=model_id,
-                                name=file_name,
-                                split=split,
-                            )
-                        )
-                    except FileNotFoundError:
-                        pass
-                seen_results.add(file_name)
+        results = load_roc_results(
+            model_id, layers, dim_reduction, aitads_a_config, noise, split, path
+        )
         if len(results) == 0:
             continue
 
@@ -957,10 +962,7 @@ def roc_test_plot(
                 current_tpr = tpr_all[relevant_results_idx[j]]
 
                 # skip the relevant but not interesting results
-                if (
-                    i > 0
-                    and tnr_all[relevant_results_idx[sort_idx[i - 1]]] >= 0.995
-                ):
+                if i > 0 and tnr_all[relevant_results_idx[sort_idx[i - 1]]] >= 0.995:
                     continue
                 if (
                     i < len(sort_idx) - 1
@@ -982,43 +984,17 @@ def roc_test_plot(
         fig = figs[col]
         ax.set_box_aspect(1)
         ax.grid(alpha=0.5)
-        ax.set_xlim(0., 1.005)
-        ax.set_ylim(0., 1.005)
-        # ax.set_title(f"{split} data, {'incl' if noise else 'excl'} fp alerts, {len(results)} data points, {len(relevant_results_idx)} relevant")
+        ax.set_xlim(0.0, 1.005)
+        ax.set_ylim(0.0, 1.005)
         save_str = f"{title_str}_{'incl' if noise else 'excl'}_noise"
         ax.set_xlabel("True Negative Rate")
         ax.set_ylabel("True Positive Rate")
-
-        # plot indiviadual results
-        """
-        ax.scatter(
-            [
-                tnr_all[i]
-                for i in range(len(tnr_all))
-                if i not in relevant_results_idx
-            ],
-            [
-                tpr_all[i]
-                for i in range(len(tpr_all))
-                if i not in relevant_results_idx
-            ],
-            color="b",
-            marker="x",
-            label="all macro results",
-        )
-        ax.scatter(
-            [tnr_all[i] for i in relevant_results_idx],
-            [tpr_all[i] for i in relevant_results_idx],
-            color="r",
-            marker="x",
-            label="ROC relevant macro results",
-        )"""
 
         # plot macro roc curve
         ax.plot(
             tnr_relevant,
             tpr_relevant,
-            label="macro", #f"AUC = {compute_auc_score(tnr_relevant, tpr_relevant):.3f}, macro",
+            label="macro",
             color="r",
             zorder=10,
         )
@@ -1026,20 +1002,21 @@ def roc_test_plot(
             tnr_relevant[-1],
             0.0,
             tpr_relevant[-1],
-            #ls="--",
             color="r",
-            #alpha=0.5,
             zorder=10,
         )
         ax.hlines(
             tpr_relevant[0],
             0.0,
             tnr_relevant[0],
-            #ls="--",
             color="r",
-            #alpha=0.5,
             zorder=10,
         )
+        if print_auc_table:
+            print(f"model & macro & {' & '.join(lvl_1_labels)} \\\\")
+            table_row = (
+                f"{model_id} & {compute_auc_score(tnr_relevant, tpr_relevant):.5f} "
+            )
 
         # individual labels
         if not plot_macro_only:
@@ -1053,10 +1030,7 @@ def roc_test_plot(
                     ]
                 )
                 tnr_all = np.array(
-                    [
-                        result["summary"]["lvl1"][label]["tnr"][0]
-                        for result in results
-                    ]
+                    [result["summary"]["lvl1"][label]["tnr"][0] for result in results]
                 )
 
                 tpr_relevant = tpr_all[relevant_results_idx]
@@ -1073,9 +1047,8 @@ def roc_test_plot(
                 ax.plot(
                     tnr_relevant,
                     tpr_relevant,
-                    label=label, # f"AUC = {compute_auc_score(tnr_relevant, tpr_relevant):.3f}, {label}",
+                    label=label,
                     color=cmap(i / (len(lvl_1_labels) - 1)),
-                    #alpha=0.8,
                 )
                 if len(tnr_relevant) == 0:
                     continue
@@ -1083,24 +1056,30 @@ def roc_test_plot(
                     tpr_relevant[0],
                     0.0,
                     tnr_relevant[0],
-                    #ls="--",
                     color=cmap(i / (len(lvl_1_labels) - 1)),
-                    #alpha=0.5,
                 )
                 ax.vlines(
                     tnr_relevant[-1],
                     0.0,
                     tpr_relevant[-1],
-                    #ls="--",
                     color=cmap(i / (len(lvl_1_labels) - 1)),
-                    #alpha=0.5,
                 )
+                if print_auc_table:
+                    table_row += (
+                        f"& {compute_auc_score(tnr_relevant, tpr_relevant):.5f} "
+                    )
 
             ax.legend(loc="lower left")
 
         fig.tight_layout()
-        fig.savefig(f"../paper_figures/{save_str}.pdf")
+        if save_mode:
+            fig.savefig(f"../paper_figures/{save_str}.pdf")
+        if print_auc_table:
+            print(table_row + " \\\\")
+            print()
+
     plt.show()
+
 
 # result plotting functions
 
@@ -1212,6 +1191,7 @@ def model_comparison_plot(
     plt.show()
 
 
+# TODO: this function for test data
 def pprint_eval_report(
     train_results: dict[str, dict | np.ndarray],
     val_results: dict[str, dict | np.ndarray],
@@ -1220,7 +1200,6 @@ def pprint_eval_report(
     exclude_raw_metrics: bool = True,
     hierarchical_label_levels: Iterable[int] = [0, 1],
 ) -> None:
-    # TODO: test data
     """Pretty prints the evaluation results of a clustering model."""
     level_labels = {
         0: ["macro"],
@@ -1259,20 +1238,18 @@ def pprint_eval_report(
             )
 
 
+# TODO: this function for test data
 def pprint_eval_diff(
     train_results1: dict[str, dict | np.ndarray],
     val_results1: dict[str, dict | np.ndarray],
-    test_results1: dict[str, dict | np.ndarray],
     train_results2: dict[str, dict | np.ndarray],
     val_results2: dict[str, dict | np.ndarray],
-    test_results2: dict[str, dict | np.ndarray],
     target_vocab: Vocabulary,
     excluded_label: str = "-",
     exclude_raw_metrics: bool = True,
     hierarchical_label_levels: Iterable[int] = [0, 1],
     test_mode: bool = False,
 ) -> None:
-    # TODO: test data
     """Pretty prints the difference of the evaluation results of two clustering models."""
     level_labels = {
         0: ["macro"],
