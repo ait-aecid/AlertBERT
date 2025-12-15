@@ -1,14 +1,13 @@
 # AIT Alert Dataset - Augmented
 
-A flexible and easily configured augmentation method for the [AIT Alert Dataset](https://zenodo.org/records/8263181).  
+A flexible and easily configured augmentation method for the [AIT Alert Dataset](https://doi.org/10.5281/zenodo.8263181).  
 
-So far AIT-ADS-A does not contain the raw alert data of AIT-ADS because there we would have to make sure to adapt all timestamps correctly and this is not yet implemented.
-Also the handling of IP addresses in the case of mixing alerts of different origins is an open problem. 
+So far AIT-ADS-A does not contain the raw alert data of AIT-ADS because there we would have to make sure to adapt all timestamps and IP addresses correctly, and this is not yet implemented.
 
 ## Method
 
 The reason why AIT-ADS-A was created is that the original AIT-ADS only features one attack at a time and a constant noise level.
-In this regime the simple TimeDelta method is quite effective at the alert grouping problem, hence data with more noise and/or simultaneous attacks were required to create and evaluate more advanced alert grouping methods.  
+In this regime the simple time-delta method (by [Landauer et al.](https://doi.org/10.1145/3510581)) is quite effective at the alert grouping problem, hence data with more noise and/or simultaneous attacks were required to create and evaluate more advanced alert grouping methods.  
 In order to save the effort of creating a new version of AIT-ADS, the idea was born to instead augment it by mixing alerts of different scenarios or days and thereby create a dataset with a desired amount of noise and attacks which are more difficult to group.
 
 This augmentation happens in the following way:
@@ -54,6 +53,7 @@ With these labels the goal of the alert grouping problem is to group together al
 To measure the performance of an alert grouping model on a high-level-label of the label hierarchy one calculates the respective macro score by taking the average of all the scores over the lower-level-labels contained in it.
 
 ## Data preparation
+__This step is only necessary if the files `<scenario>_<attack|noise_number>.json` are not present in the `data` directory!__  
 
 To prepare the AIT-ADS for creating augmented versions of it run `../build_augment_files.py`.  
 This script will separate the data into several files containing the noise of each AIT-ADS scenario split into days, and the alerts of individual attacks for each scenario.  
@@ -61,10 +61,10 @@ Lists describing the contents of each noise/attack file can be found at the end 
 
 ## Using AIT-ADS-A
 
-To load AIT-ADS-A into a PyTorch dataset use the `AITAlertDataset` class defined in `../deep_learning/aitads.py` instantiated with the keyword arguments `flavour="augmented"` and `config` the name to a config file.  
+To load AIT-ADS-A into a PyTorch dataset use the `AITAlertDataset` class defined in `../alertbert/aitads.py` instantiated with the keyword arguments `flavour="augmented"` and `config` the name to a config file.  
 The config name `"original"` recreates the original AIT-ADS with the augmented dataset class (except for the small difference that dnsteal alerts of the first days are not discarded but moved to the next days).  
 
-To create a new configuration of AIT-ADS-A it is sufficient to define a config file as described below and, to evaluate models on this configuration, build a ground truth vocabulary of it by running `python -m alertbert.model_eval_utils config-name`.  
+To create a new configuration of AIT-ADS-A it is sufficient to define a config file as described below and, to evaluate models on this configuration, build a ground truth vocabulary of it by running `python -m alertbert.model_eval_utils <config-name>`.  
 If you create a new config file, please add a short description of it to the list below.
 
 ### Config files
