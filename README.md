@@ -12,6 +12,10 @@ There the only parameters to adjust in `MaskedLangModelParams` passed to the `ma
 After completing the training of the masked-language-model, run the module `alertbert.eval_grouping`to compute the corresponding ROC-curves by providing the `model_id` to the `model_config_generator` function.
 To view the results, please refer to the plots of ROC-curves provided in the notebooks in the `roc_results` directory.
 
+These results should then look something like the following ROC-plot obtained on the `simul-attacks` configuration of AIT-ADS-A.
+
+![ROC-plot of AlertBERT on the `simul-attacks` configuration of AIT-ADS-A](./roc_results/ROC_mlm_1l_2h_16d_simul-attacks_1_60k_simul-attacks_output_emb_2_dim_excl_noise.png)
+
 The individual modules in `alertbert` have the following purposes:
 
 + `alertbert.aitads` provides the dataset,
